@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Plus, Target, Trash2, Loader2, CheckCircle2, CalendarDays, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import NewGoalDialog from "@/components/NewGoalDialog";
 import AddFundsDialog from "@/components/AddFundsDialog";
+import LoadError from "@/components/LoadError";
 import { api, formatMoney, type Goal } from "@/lib/api";
+import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 
 function daysLeft(date: string): string {
   const diff = Math.ceil(
@@ -19,24 +21,20 @@ function daysLeft(date: string): string {
 
 export default function Goals() {
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const { goals } = await api.listGoals();
     setGoals(goals);
-    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    load().catch(() => setLoading(false));
-  }, [load]);
+  const { loading, error, reload } = useAuthenticatedLoad(load);
 
   async function onDelete(id: number) {
     setDeletingId(id);
     try {
       await api.deleteGoal(id);
-      await load();
+      await reload();
     } finally {
       setDeletingId(null);
     }
@@ -59,7 +57,7 @@ export default function Goals() {
           )}
         </div>
         <NewGoalDialog
-          onCreated={load}
+          onCreated={reload}
           trigger={
             <Button size="sm">
               <Plus className="h-4 w-4" />
@@ -73,6 +71,8 @@ export default function Goals() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
+      ) : error ? (
+        <LoadError message={error} onRetry={reload} />
       ) : goals.length === 0 ? (
         <Card className="glass flex flex-col items-center gap-3 py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
@@ -86,7 +86,7 @@ export default function Goals() {
             </p>
           </div>
           <NewGoalDialog
-            onCreated={load}
+            onCreated={reload}
             trigger={
               <Button size="sm" variant="secondary">
                 <Plus className="h-4 w-4" />
@@ -162,7 +162,7 @@ export default function Goals() {
 
                 <AddFundsDialog
                   goal={g}
-                  onDone={load}
+                  onDone={reload}
                   trigger={
                     <Button variant="secondary" size="sm" className="mt-5 w-full">
                       <Wallet className="h-4 w-4" />

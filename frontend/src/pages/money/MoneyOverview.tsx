@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   Plus,
   ArrowUpRight,
@@ -12,7 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
+import LoadError from "@/components/LoadError";
 import { api, formatMoney, type Transaction } from "@/lib/api";
+import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 
 interface Summary {
   balance: number;
@@ -34,25 +36,21 @@ function formatDate(d: string) {
 export default function MoneyOverview() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const [s, t] = await Promise.all([api.moneySummary(), api.listTransactions({ limit: 100 })]);
     setSummary(s);
     setTransactions(t.transactions);
-    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    load().catch(() => setLoading(false));
-  }, [load]);
+  const { loading, error, reload } = useAuthenticatedLoad(load);
 
   async function onDelete(id: number) {
     setDeletingId(id);
     try {
       await api.deleteTransaction(id);
-      await load();
+      await reload();
     } finally {
       setDeletingId(null);
     }
@@ -118,7 +116,7 @@ export default function MoneyOverview() {
             )}
           </div>
           <AddTransactionDialog
-            onCreated={load}
+            onCreated={reload}
             trigger={
               <Button size="sm">
                 <Plus className="h-4 w-4" />
@@ -133,6 +131,8 @@ export default function MoneyOverview() {
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
+          ) : error ? (
+            <LoadError message={error} onRetry={reload} />
           ) : transactions.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
@@ -142,7 +142,7 @@ export default function MoneyOverview() {
                 No transactions yet. Add your first income or expense to see your balance grow.
               </p>
               <AddTransactionDialog
-                onCreated={load}
+                onCreated={reload}
                 trigger={
                   <Button size="sm" variant="secondary">
                     <Plus className="h-4 w-4" />

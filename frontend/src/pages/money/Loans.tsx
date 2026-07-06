@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   Plus,
   Landmark,
@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import NewLoanDialog from "@/components/NewLoanDialog";
 import LoanDetailsDialog from "@/components/LoanDetailsDialog";
+import LoadError from "@/components/LoadError";
 import { api, formatMoney, type Loan } from "@/lib/api";
+import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 import { cn } from "@/lib/utils";
 
 function fmtDate(iso: string | null) {
@@ -26,24 +28,20 @@ function fmtDate(iso: string | null) {
 
 export default function Loans() {
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const { loans } = await api.listLoans();
     setLoans(loans);
-    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    load().catch(() => setLoading(false));
-  }, [load]);
+  const { loading, error, reload } = useAuthenticatedLoad(load);
 
   async function pay(id: number) {
     setBusyId(id);
     try {
       await api.payLoan(id, true);
-      await load();
+      await reload();
     } finally {
       setBusyId(null);
     }
@@ -53,7 +51,7 @@ export default function Loans() {
     setBusyId(id);
     try {
       await api.deleteLoan(id);
-      await load();
+      await reload();
     } finally {
       setBusyId(null);
     }
@@ -77,7 +75,7 @@ export default function Loans() {
           )}
         </div>
         <NewLoanDialog
-          onCreated={load}
+          onCreated={reload}
           trigger={
             <Button size="sm">
               <Plus className="h-4 w-4" />
@@ -91,6 +89,8 @@ export default function Loans() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
+      ) : error ? (
+        <LoadError message={error} onRetry={reload} />
       ) : loans.length === 0 ? (
         <Card className="glass flex flex-col items-center gap-3 py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
@@ -104,7 +104,7 @@ export default function Loans() {
             </p>
           </div>
           <NewLoanDialog
-            onCreated={load}
+            onCreated={reload}
             trigger={
               <Button size="sm" variant="secondary">
                 <Plus className="h-4 w-4" />
@@ -206,7 +206,7 @@ export default function Loans() {
                 <div className="mt-4 flex items-center gap-2">
                   <LoanDetailsDialog
                     loanId={l.id}
-                    onChanged={load}
+                    onChanged={reload}
                     trigger={
                       <Button variant="secondary" size="sm" className="flex-1">
                         <ListChecks className="h-4 w-4" />

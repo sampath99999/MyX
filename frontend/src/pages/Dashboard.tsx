@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Sparkles,
@@ -13,8 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import PageHeader from "@/components/PageHeader";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
+import LoadError from "@/components/LoadError";
 import { useAuth } from "@/lib/auth";
 import { api, formatMoney } from "@/lib/api";
+import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 
 interface Summary {
   greeting: string;
@@ -31,10 +33,11 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
 
-  const load = () => api.dashboardSummary().then(setSummary).catch(() => {});
-  useEffect(() => {
-    load();
+  const load = useCallback(async () => {
+    setSummary(await api.dashboardSummary());
   }, []);
+
+  const { error, reload } = useAuthenticatedLoad(load);
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
 
@@ -82,7 +85,7 @@ export default function Dashboard() {
         })}
       >
         <AddTransactionDialog
-          onCreated={load}
+          onCreated={reload}
           trigger={
             <Button variant="secondary" size="sm">
               <Plus className="h-4 w-4" />
@@ -93,6 +96,12 @@ export default function Dashboard() {
       </PageHeader>
 
       <div className="p-6 lg:p-8 space-y-8">
+        {error && (
+          <Card className="glass p-4">
+            <LoadError message={error} onRetry={reload} />
+          </Card>
+        )}
+
         {/* Greeting */}
         <div className="animate-in-up">
           <h2 className="text-3xl font-bold tracking-tight">

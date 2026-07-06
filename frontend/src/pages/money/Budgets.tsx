@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Plus, Target, Trash2, Loader2, Pencil, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import BudgetDialog from "@/components/BudgetDialog";
+import LoadError from "@/components/LoadError";
 import { getCategoryIcon } from "@/components/CategoryPicker";
 import { api, formatMoney, type Budget } from "@/lib/api";
+import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 import { cn } from "@/lib/utils";
 
 type Totals = { limit: number; spent: number; remaining: number };
@@ -20,25 +22,21 @@ function tone(percent: number, over: boolean) {
 export default function Budgets() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
-  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const { budgets, totals } = await api.listBudgets();
     setBudgets(budgets);
     setTotals(totals);
-    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    load().catch(() => setLoading(false));
-  }, [load]);
+  const { loading, error, reload } = useAuthenticatedLoad(load);
 
   async function remove(id: number) {
     setBusyId(id);
     try {
       await api.deleteBudget(id);
-      await load();
+      await reload();
     } finally {
       setBusyId(null);
     }
@@ -57,7 +55,7 @@ export default function Budgets() {
           <p className="text-sm text-muted-foreground">Monthly spending limits by category</p>
         </div>
         <BudgetDialog
-          onSaved={load}
+          onSaved={reload}
           trigger={
             <Button size="sm">
               <Plus className="h-4 w-4" />
@@ -71,6 +69,8 @@ export default function Budgets() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
+      ) : error ? (
+        <LoadError message={error} onRetry={reload} />
       ) : budgets.length === 0 ? (
         <Card className="glass flex flex-col items-center gap-3 py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
@@ -84,7 +84,7 @@ export default function Budgets() {
             </p>
           </div>
           <BudgetDialog
-            onSaved={load}
+            onSaved={reload}
             trigger={
               <Button size="sm" variant="secondary">
                 <Plus className="h-4 w-4" />
@@ -148,7 +148,7 @@ export default function Budgets() {
                     <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                       <BudgetDialog
                         budget={b}
-                        onSaved={load}
+                        onSaved={reload}
                         trigger={
                           <button
                             title="Edit limit"
