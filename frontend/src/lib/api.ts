@@ -165,7 +165,34 @@ export const api = {
 
   deleteRecurring: (id: number) =>
     request<{ ok: true }>(`/api/recurring/${id}`, { method: "DELETE" }),
+
+  // ----- Budgets -----
+  listBudgets: () =>
+    request<{ budgets: Budget[]; totals: { limit: number; spent: number; remaining: number } }>(
+      "/api/budgets",
+    ),
+
+  createBudget: (body: { category: string; amount: number }) =>
+    request<{ budget: Budget }>("/api/budgets", { method: "POST", body: JSON.stringify(body) }),
+
+  updateBudget: (id: number, amount: number) =>
+    request<{ ok: true }>(`/api/budgets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ amount }),
+    }),
+
+  deleteBudget: (id: number) => request<{ ok: true }>(`/api/budgets/${id}`, { method: "DELETE" }),
 };
+
+export interface Budget {
+  id: number;
+  category: string;
+  limit: number;
+  spent: number;
+  remaining: number;
+  percent: number;
+  over: boolean;
+}
 
 export type Frequency = "daily" | "weekly" | "monthly" | "yearly";
 

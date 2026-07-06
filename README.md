@@ -39,11 +39,13 @@ Single-user (you) today, built so family accounts can be added later.
 >   flow (hero amount input with amount-in-words, searchable icon category picker)
 > - ✅ **Money → Recurring** — bills & subscriptions; "Mark paid" logs a real
 >   transaction and rolls the due date forward; pause/resume; due/overdue status
+> - ✅ **Money → Budgets** — monthly limit per category, live spend vs limit with
+>   green/amber/red status and over-budget warnings
 > - ✅ **Money → Goals** — savings goals with progress bars, add/withdraw funds,
 >   auto-complete at 100%
 >
-> The Money section uses tabs (`/money` Overview, `/money/recurring`, `/money/goals`)
-> so it can grow without cluttering the sidebar. Modules are added one at a time.
+> The Money section uses tabs (Overview · Recurring · Budgets · Goals) so it can
+> grow without cluttering the sidebar. Modules are added one at a time.
 
 ## 3. Architecture
 
@@ -201,8 +203,8 @@ Money module (building out one sub-feature at a time):
 1. ✅ Overview — transactions + balance
 2. ✅ Savings Goals
 3. ✅ Recurring transactions (bills & subscriptions)
-4. Budgets (monthly limits per category + alerts)  ← next
-5. Debts / loans
+4. ✅ Budgets (monthly limits per category + alerts)
+5. Debts / loans  ← next
 6. Investments
 7. Money charts (spend by category, trends)
 
