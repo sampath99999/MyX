@@ -41,11 +41,14 @@ Single-user (you) today, built so family accounts can be added later.
 >   transaction and rolls the due date forward; pause/resume; due/overdue status
 > - ✅ **Money → Budgets** — monthly limit per category, live spend vs limit with
 >   green/amber/red status and over-budget warnings
+> - ✅ **Money → Loans** — EMI loans on reducing-balance amortization (matches the
+>   bank to the paise); enter EMI+rate → derived schedule; live preview, pay EMI,
+>   floating rate changes, full schedule + payment history
 > - ✅ **Money → Goals** — savings goals with progress bars, add/withdraw funds,
 >   auto-complete at 100%
 >
-> The Money section uses tabs (Overview · Recurring · Budgets · Goals) so it can
-> grow without cluttering the sidebar. Modules are added one at a time.
+> The Money section uses tabs (Overview · Recurring · Budgets · Loans · Goals) so it
+> can grow without cluttering the sidebar. Modules are added one at a time.
 
 ## 3. Architecture
 
@@ -204,8 +207,9 @@ Money module (building out one sub-feature at a time):
 2. ✅ Savings Goals
 3. ✅ Recurring transactions (bills & subscriptions)
 4. ✅ Budgets (monthly limits per category + alerts)
-5. Debts / loans  ← next
-6. Investments
+5. ✅ Loans (EMI, reducing-balance, floating rate) — bank-accurate
+   - Todo: personal debts / IOUs (money you lent or borrowed from people)
+6. Investments  ← next
 7. Money charts (spend by category, trends)
 
 Then: Tasks + Checklists → Notes + Memories → cross-module dashboard → PWA/offline → reminders.

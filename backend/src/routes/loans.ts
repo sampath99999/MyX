@@ -1,0 +1,310 @@
+import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
+import { requireAuth } from "../middleware";
+import { projectSchedule, monthlyInterest } from "../lib/amortize";
+import type { AppBindings } from "../types";
+
+const loans = new Hono<AppBindings>();
+loans.use("*", requireAuth);
+
+interface LoanRow {
+  id: number;
+  name: string;
+  lender: string | null;
+  principal: number;
+  annual_rate: number;
+  emi: number;
+  outstanding: number;
+  start_date: string;
+  status: "active" | "closed";
+  created_at: string;
+}
+
+const toPaise = (r: number) => Math.round(r * 100);
+const toRupees = (p: number) => p / 100;
+const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Add N months to a YYYY-MM-DD date (clamped to month end). */
+function addMonths(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const targetMonth = date.getUTCMonth() + n;
+  const targetYear = date.getUTCFullYear() + Math.floor(targetMonth / 12);
+  const normMonth = ((targetMonth % 12) + 12) % 12;
+  const daysInMonth = new Date(Date.UTC(targetYear, normMonth + 1, 0)).getUTCDate();
+  date.setUTCFullYear(targetYear, normMonth, Math.min(d, daysInMonth));
+  return date.toISOString().slice(0, 10);
+}
+
+/** Loan + a projection of what's left from the current outstanding balance. */
+function serialize(l: LoanRow, paidCount: number) {
+  const proj = projectSchedule(l.outstanding, l.annual_rate, l.emi);
+  const nextInterest = monthlyInterest(l.outstanding, l.annual_rate);
+  const nextPrincipal = Math.min(l.emi - nextInterest, l.outstanding);
+  const paidStr = new Date().toISOString().slice(0, 10);
+
+  return {
+    id: l.id,
+    name: l.name,
+    lender: l.lender,
+    principal: toRupees(l.principal),
+    annual_rate: l.annual_rate,
+    emi: toRupees(l.emi),
+    outstanding: toRupees(l.outstanding),
+    start_date: l.start_date,
+    status: l.status,
+    paid_count: paidCount,
+    progress_percent:
+      l.principal > 0 ? Math.round(((l.principal - l.outstanding) / l.principal) * 100) : 0,
+    months_remaining: proj.months,
+    payoff_date: proj.months > 0 ? addMonths(paidStr, proj.months) : null,
+    interest_remaining: toRupees(proj.totalInterest),
+    covers_interest: proj.coversInterest,
+    next_payment: {
+      interest: toRupees(nextInterest),
+      principal: toRupees(Math.max(nextPrincipal, 0)),
+    },
+  };
+}
+
+async function paidCountFor(db: D1Database, loanId: number): Promise<number> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS c FROM loan_payments WHERE loan_id = ?")
+    .bind(loanId)
+    .first<{ c: number }>();
+  return row?.c ?? 0;
+}
+
+/** GET /api/loans — list with projections. */
+loans.get("/", async (c) => {
+  const user = c.get("user");
+  const { results } = await c.env.DB.prepare(
+    `SELECT l.*, (SELECT COUNT(*) FROM loan_payments p WHERE p.loan_id = l.id) AS paid_count
+     FROM loans l WHERE l.user_id = ? ORDER BY l.status, l.created_at DESC`,
+  )
+    .bind(user.sub)
+    .all<LoanRow & { paid_count: number }>();
+
+  return c.json({
+    loans: (results ?? []).map((r) => serialize(r, r.paid_count)),
+  });
+});
+
+/** GET /api/loans/:id — details + full amortization schedule + payment history. */
+loans.get("/:id", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const loan = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  if (!loan) throw new HTTPException(404, { message: "Loan not found" });
+
+  const proj = projectSchedule(loan.outstanding, loan.annual_rate, loan.emi);
+  const { results: payments } = await c.env.DB.prepare(
+    "SELECT * FROM loan_payments WHERE loan_id = ? ORDER BY id DESC",
+  )
+    .bind(id)
+    .all();
+
+  return c.json({
+    loan: serialize(loan, (payments ?? []).length),
+    schedule: proj.rows.map((r) => ({
+      month: r.month,
+      interest: toRupees(r.interest),
+      principal: toRupees(r.principal),
+      payment: toRupees(r.payment),
+      balance: toRupees(r.balance),
+    })),
+    payments: (payments ?? []).map((p: Record<string, unknown>) => ({
+      id: p.id,
+      amount: toRupees(p.amount as number),
+      interest_part: toRupees(p.interest_part as number),
+      principal_part: toRupees(p.principal_part as number),
+      balance_after: toRupees(p.balance_after as number),
+      paid_on: p.paid_on,
+    })),
+  });
+});
+
+/** POST /api/loans — create. Body: { name, lender?, principal, annual_rate, emi, start_date? } */
+loans.post("/", async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json().catch(() => null);
+
+  const name = String(body?.name ?? "").trim();
+  const lender = body?.lender ? String(body.lender).trim() : null;
+  const principal = Number(body?.principal);
+  const annual_rate = Number(body?.annual_rate);
+  const emi = Number(body?.emi);
+  const start_date = body?.start_date ? String(body.start_date) : new Date().toISOString().slice(0, 10);
+
+  if (!name) throw new HTTPException(400, { message: "Loan name is required" });
+  if (!Number.isFinite(principal) || principal <= 0)
+    throw new HTTPException(400, { message: "principal must be positive" });
+  if (!Number.isFinite(annual_rate) || annual_rate < 0)
+    throw new HTTPException(400, { message: "annual_rate must be >= 0" });
+  if (!Number.isFinite(emi) || emi <= 0)
+    throw new HTTPException(400, { message: "emi must be positive" });
+  if (!dateRe.test(start_date))
+    throw new HTTPException(400, { message: "start_date must be YYYY-MM-DD" });
+
+  const principalP = toPaise(principal);
+  const emiP = toPaise(emi);
+  // Reject an EMI that can never amortize the loan.
+  if (emiP <= monthlyInterest(principalP, annual_rate))
+    throw new HTTPException(400, {
+      message: "EMI is too low to cover the monthly interest — the loan would never close.",
+    });
+
+  const created = await c.env.DB.prepare(
+    `INSERT INTO loans (user_id, name, lender, principal, annual_rate, emi, outstanding, start_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+  )
+    .bind(user.sub, name, lender, principalP, annual_rate, emiP, principalP, start_date)
+    .first<LoanRow>();
+  if (!created) throw new HTTPException(500, { message: "Failed to create loan" });
+
+  return c.json({ loan: serialize(created, 0) }, 201);
+});
+
+/** POST /api/loans/:id/pay — record an EMI (reducing balance) and optionally log a transaction. */
+loans.post("/:id/pay", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  const body = await c.req.json().catch(() => ({}));
+  const logTransaction = body?.log_transaction !== false; // default: also record as an expense
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const loan = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  if (!loan) throw new HTTPException(404, { message: "Loan not found" });
+  if (loan.status === "closed") throw new HTTPException(400, { message: "Loan is already closed" });
+
+  const interest = monthlyInterest(loan.outstanding, loan.annual_rate);
+  let principal = loan.emi - interest;
+  if (principal > loan.outstanding) principal = loan.outstanding; // final EMI
+  const payment = interest + principal;
+  const balanceAfter = loan.outstanding - principal;
+  const paidOn = body?.paid_on && dateRe.test(String(body.paid_on))
+    ? String(body.paid_on)
+    : new Date().toISOString().slice(0, 10);
+  const nextStatus = balanceAfter <= 0 ? "closed" : "active";
+
+  const stmts = [
+    c.env.DB.prepare(
+      `INSERT INTO loan_payments (loan_id, user_id, amount, interest_part, principal_part, balance_after, paid_on)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, user.sub, payment, interest, principal, balanceAfter, paidOn),
+    c.env.DB.prepare("UPDATE loans SET outstanding = ?, status = ? WHERE id = ? AND user_id = ?").bind(
+      balanceAfter,
+      nextStatus,
+      id,
+      user.sub,
+    ),
+  ];
+  if (logTransaction) {
+    stmts.push(
+      c.env.DB.prepare(
+        `INSERT INTO transactions (user_id, type, amount, category, note, occurred_on)
+         VALUES (?, 'expense', ?, 'Loan EMI', ?, ?)`,
+      ).bind(user.sub, payment, `${loan.name} EMI`, paidOn),
+    );
+  }
+  await c.env.DB.batch(stmts);
+
+  const updated = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  return c.json({
+    loan: serialize(updated!, await paidCountFor(c.env.DB, id)),
+    payment: {
+      amount: toRupees(payment),
+      interest_part: toRupees(interest),
+      principal_part: toRupees(principal),
+      balance_after: toRupees(balanceAfter),
+    },
+  });
+});
+
+/** POST /api/loans/:id/rate — floating rate change (affects future interest). Body: { annual_rate, effective_from? } */
+loans.post("/:id/rate", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  const body = await c.req.json().catch(() => null);
+  const annual_rate = Number(body?.annual_rate);
+  const effective_from = body?.effective_from ? String(body.effective_from) : new Date().toISOString().slice(0, 10);
+
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+  if (!Number.isFinite(annual_rate) || annual_rate < 0)
+    throw new HTTPException(400, { message: "annual_rate must be >= 0" });
+  if (!dateRe.test(effective_from))
+    throw new HTTPException(400, { message: "effective_from must be YYYY-MM-DD" });
+
+  const loan = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  if (!loan) throw new HTTPException(404, { message: "Loan not found" });
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      "INSERT INTO loan_rate_changes (loan_id, annual_rate, effective_from) VALUES (?, ?, ?)",
+    ).bind(id, annual_rate, effective_from),
+    c.env.DB.prepare("UPDATE loans SET annual_rate = ? WHERE id = ? AND user_id = ?").bind(
+      annual_rate,
+      id,
+      user.sub,
+    ),
+  ]);
+
+  const updated = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  return c.json({ loan: serialize(updated!, await paidCountFor(c.env.DB, id)) });
+});
+
+/** PATCH /api/loans/:id — edit name/lender/emi. */
+loans.patch("/:id", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  const body = await c.req.json().catch(() => null);
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const loan = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  if (!loan) throw new HTTPException(404, { message: "Loan not found" });
+
+  const name = body?.name != null ? String(body.name).trim() : loan.name;
+  const lender = body?.lender !== undefined ? (body.lender ? String(body.lender).trim() : null) : loan.lender;
+  const emi = body?.emi != null ? toPaise(Number(body.emi)) : loan.emi;
+
+  if (!name) throw new HTTPException(400, { message: "Loan name is required" });
+  if (!Number.isFinite(emi) || emi <= 0) throw new HTTPException(400, { message: "invalid emi" });
+  if (emi <= monthlyInterest(loan.outstanding, loan.annual_rate))
+    throw new HTTPException(400, { message: "EMI too low to cover monthly interest" });
+
+  await c.env.DB.prepare("UPDATE loans SET name = ?, lender = ?, emi = ? WHERE id = ? AND user_id = ?")
+    .bind(name, lender, emi, id, user.sub)
+    .run();
+  const updated = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  return c.json({ loan: serialize(updated!, await paidCountFor(c.env.DB, id)) });
+});
+
+/** DELETE /api/loans/:id */
+loans.delete("/:id", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+  const res = await c.env.DB.prepare("DELETE FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .run();
+  if (!res.meta.changes) throw new HTTPException(404, { message: "Loan not found" });
+  return c.json({ ok: true });
+});
+
+export default loans;

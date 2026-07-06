@@ -7,6 +7,7 @@ const tabs = [
   { to: "/money", label: "Overview", end: true },
   { to: "/money/recurring", label: "Recurring" },
   { to: "/money/budgets", label: "Budgets" },
+  { to: "/money/loans", label: "Loans" },
   { to: "/money/goals", label: "Goals" },
 ];
 

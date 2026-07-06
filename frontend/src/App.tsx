@@ -8,6 +8,7 @@ import MoneyLayout from "@/pages/money/MoneyLayout";
 import MoneyOverview from "@/pages/money/MoneyOverview";
 import Recurring from "@/pages/money/Recurring";
 import Budgets from "@/pages/money/Budgets";
+import Loans from "@/pages/money/Loans";
 import Goals from "@/pages/money/Goals";
 
 function FullScreenLoader() {
@@ -57,6 +58,7 @@ export default function App() {
               <Route index element={<MoneyOverview />} />
               <Route path="recurring" element={<Recurring />} />
               <Route path="budgets" element={<Budgets />} />
+              <Route path="loans" element={<Loans />} />
               <Route path="goals" element={<Goals />} />
             </Route>
           </Route>

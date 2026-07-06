@@ -182,7 +182,77 @@ export const api = {
     }),
 
   deleteBudget: (id: number) => request<{ ok: true }>(`/api/budgets/${id}`, { method: "DELETE" }),
+
+  // ----- Loans (EMI) -----
+  listLoans: () => request<{ loans: Loan[] }>("/api/loans"),
+
+  getLoan: (id: number) =>
+    request<{ loan: Loan; schedule: LoanScheduleRow[]; payments: LoanPayment[] }>(
+      `/api/loans/${id}`,
+    ),
+
+  createLoan: (body: {
+    name: string;
+    lender?: string;
+    principal: number;
+    annual_rate: number;
+    emi: number;
+    start_date?: string;
+  }) => request<{ loan: Loan }>("/api/loans", { method: "POST", body: JSON.stringify(body) }),
+
+  payLoan: (id: number, logTransaction = true) =>
+    request<{ loan: Loan; payment: LoanPayment }>(`/api/loans/${id}/pay`, {
+      method: "POST",
+      body: JSON.stringify({ log_transaction: logTransaction }),
+    }),
+
+  changeLoanRate: (id: number, annual_rate: number) =>
+    request<{ loan: Loan }>(`/api/loans/${id}/rate`, {
+      method: "POST",
+      body: JSON.stringify({ annual_rate }),
+    }),
+
+  updateLoan: (id: number, body: { name?: string; lender?: string; emi?: number }) =>
+    request<{ loan: Loan }>(`/api/loans/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  deleteLoan: (id: number) => request<{ ok: true }>(`/api/loans/${id}`, { method: "DELETE" }),
 };
+
+export interface Loan {
+  id: number;
+  name: string;
+  lender: string | null;
+  principal: number;
+  annual_rate: number;
+  emi: number;
+  outstanding: number;
+  start_date: string;
+  status: "active" | "closed";
+  paid_count: number;
+  progress_percent: number;
+  months_remaining: number;
+  payoff_date: string | null;
+  interest_remaining: number;
+  covers_interest: boolean;
+  next_payment: { interest: number; principal: number };
+}
+
+export interface LoanScheduleRow {
+  month: number;
+  interest: number;
+  principal: number;
+  payment: number;
+  balance: number;
+}
+
+export interface LoanPayment {
+  id?: number;
+  amount: number;
+  interest_part: number;
+  principal_part: number;
+  balance_after: number;
+  paid_on?: string;
+}
 
 export interface Budget {
   id: number;
