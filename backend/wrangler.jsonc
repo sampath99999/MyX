@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "myx-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-09",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "myx-db",
+      "database_id": "ab5a4c50-4c48-41b6-ae3e-02ce46b63b82",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // Non-secret defaults. JWT_SECRET is set via `wrangler secret put JWT_SECRET`
+    // for production and via .dev.vars for local dev.
+    "APP_NAME": "MyX"
+  }
+}

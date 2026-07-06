@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+frontend/dist/
+
+# Cloudflare / Wrangler
+.wrangler/
+.dev.vars
+
+# Env files (keep .env.production which only holds a public URL? no — ignore all local env)
+.env.local
+.env.*.local
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db

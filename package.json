@@ -1,0 +1,21 @@
+{
+  "name": "myx",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MyX — personal life manager (Cloudflare Workers + Pages + D1)",
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta -k \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "dev:api": "npm --prefix backend run dev",
+    "dev:web": "npm --prefix frontend run dev",
+    "install:all": "npm install && npm --prefix backend install && npm --prefix frontend install",
+    "build": "npm --prefix frontend run build",
+    "db:migrate:local": "npm --prefix backend run db:migrate:local",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "deploy:api": "npm --prefix backend run deploy",
+    "deploy:web": "npm --prefix frontend run deploy",
+    "deploy": "npm run deploy:api && npm run deploy:web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
