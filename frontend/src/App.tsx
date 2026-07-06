@@ -6,6 +6,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import MoneyLayout from "@/pages/money/MoneyLayout";
 import MoneyOverview from "@/pages/money/MoneyOverview";
+import Transactions from "@/pages/money/Transactions";
 import Recurring from "@/pages/money/Recurring";
 import Budgets from "@/pages/money/Budgets";
 import Loans from "@/pages/money/Loans";
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/money" element={<MoneyLayout />}>
               <Route index element={<MoneyOverview />} />
+              <Route path="transactions" element={<Transactions />} />
               <Route path="recurring" element={<Recurring />} />
               <Route path="budgets" element={<Budgets />} />
               <Route path="loans" element={<Loans />} />

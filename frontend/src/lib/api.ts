@@ -91,6 +91,8 @@ export const api = {
       count: number;
     }>("/api/transactions/summary"),
 
+  moneyDashboard: () => request<MoneyDashboardData>("/api/money/dashboard"),
+
   createTransaction: (body: {
     type: "income" | "expense";
     amount: number;
@@ -301,7 +303,54 @@ export interface Transaction {
   category: string;
   note: string | null;
   occurred_on: string;
-  created_at: string;
+  created_at?: string;
+}
+
+export interface MoneyDashboardData {
+  summary: {
+    balance: number;
+    totalIncome: number;
+    totalExpense: number;
+    monthIncome: number;
+    monthExpense: number;
+    netMonth: number;
+    savingsRate: number;
+    spendChangePct: number | null;
+    transactionCount: number;
+  };
+  monthlyTrend: { month: string; label: string; income: number; expense: number; net: number }[];
+  categories: { category: string; amount: number; percent: number }[];
+  budgets: {
+    items: { id: number; category: string; limit: number; spent: number; percent: number; over: boolean }[];
+    totals: { limit: number; spent: number; overCount: number };
+  };
+  goals: {
+    items: { id: number; name: string; emoji: string | null; target: number; saved: number; percent: number; completed: boolean }[];
+    totals: { target: number; saved: number; count: number; completed: number };
+  };
+  loans: {
+    count: number;
+    activeCount: number;
+    outstanding: number;
+    monthlyEmi: number;
+    principal: number;
+  };
+  recurring: {
+    monthlyIncome: number;
+    monthlyExpense: number;
+    upcoming: {
+      id: number;
+      name: string;
+      type: "income" | "expense";
+      amount: number;
+      category: string;
+      next_due: string;
+      days_until: number;
+      overdue: boolean;
+    }[];
+  };
+  recentTransactions: Omit<Transaction, "created_at">[];
+  insights: { tone: "info" | "warn" | "good"; message: string }[];
 }
 
 /** Format a rupee amount for display, e.g. 48700.5 -> "₹48,700.50". */

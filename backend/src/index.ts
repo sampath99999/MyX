@@ -7,6 +7,7 @@ import goalRoutes from "./routes/goals";
 import recurringRoutes from "./routes/recurring";
 import budgetRoutes from "./routes/budgets";
 import loanRoutes from "./routes/loans";
+import moneyDashboardRoutes from "./routes/money-dashboard";
 import { requireAuth } from "./middleware";
 import type { AppBindings } from "./types";
 
@@ -32,6 +33,7 @@ app.route("/api/goals", goalRoutes);
 app.route("/api/recurring", recurringRoutes);
 app.route("/api/budgets", budgetRoutes);
 app.route("/api/loans", loanRoutes);
+app.route("/api/money", moneyDashboardRoutes);
 
 // Dashboard rollup. Money numbers are real; other modules are placeholders for now.
 app.get("/api/dashboard/summary", requireAuth, async (c) => {

@@ -25,9 +25,9 @@ export default function AppLayout() {
   const firstName = user?.name?.split(" ")[0] ?? "there";
 
   return (
-    <div className="flex min-h-dvh">
-      {/* ---------- Sidebar ---------- */}
-      <aside className="hidden md:flex md:w-64 flex-col glass border-r border-border/50 p-5">
+    <div className="flex h-dvh overflow-hidden">
+      {/* ---------- Sidebar (fixed height, does not scroll with content) ---------- */}
+      <aside className="hidden md:flex md:w-64 shrink-0 flex-col glass border-r border-border/50 p-5">
         <div className="flex items-center gap-2.5 px-2 py-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary glow">
             <Sparkles className="h-[1.15rem] w-[1.15rem] text-primary-foreground" />
@@ -85,8 +85,8 @@ export default function AppLayout() {
         </div>
       </aside>
 
-      {/* ---------- Routed content ---------- */}
-      <div className="flex-1 overflow-y-auto">
+      {/* ---------- Routed content (scrolls independently) ---------- */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <Outlet />
       </div>
     </div>

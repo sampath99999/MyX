@@ -4,7 +4,8 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const tabs = [
-  { to: "/money", label: "Overview", end: true },
+  { to: "/money", label: "Dashboard", end: true },
+  { to: "/money/transactions", label: "Transactions" },
   { to: "/money/recurring", label: "Recurring" },
   { to: "/money/budgets", label: "Budgets" },
   { to: "/money/loans", label: "Loans" },
@@ -19,7 +20,7 @@ export default function MoneyLayout() {
         <div className="flex items-center justify-between gap-4 px-6 pt-4">
           <div>
             <h1 className="text-lg font-bold tracking-tight">Money</h1>
-            <p className="text-xs text-muted-foreground">Income, expenses, balance &amp; goals</p>
+            <p className="text-xs text-muted-foreground">Dashboard, transactions &amp; financial tools</p>
           </div>
           <button
             onClick={logout}
