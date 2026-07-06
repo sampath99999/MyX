@@ -4,6 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import authRoutes from "./routes/auth";
 import txRoutes from "./routes/transactions";
 import goalRoutes from "./routes/goals";
+import recurringRoutes from "./routes/recurring";
 import { requireAuth } from "./middleware";
 import type { AppBindings } from "./types";
 
@@ -26,6 +27,7 @@ app.get("/api/health", (c) => c.json({ status: "ok", time: new Date().toISOStrin
 app.route("/api/auth", authRoutes);
 app.route("/api/transactions", txRoutes);
 app.route("/api/goals", goalRoutes);
+app.route("/api/recurring", recurringRoutes);
 
 // Dashboard rollup. Money numbers are real; other modules are placeholders for now.
 app.get("/api/dashboard/summary", requireAuth, async (c) => {

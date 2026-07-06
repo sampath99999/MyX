@@ -128,7 +128,61 @@ export const api = {
   ) => request<{ goal: Goal }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   deleteGoal: (id: number) => request<{ ok: true }>(`/api/goals/${id}`, { method: "DELETE" }),
+
+  // ----- Recurring (bills & subscriptions) -----
+  listRecurring: () => request<{ recurring: Recurring[] }>("/api/recurring"),
+
+  recurringSummary: () =>
+    request<{ monthlyIncome: number; monthlyExpense: number; count: number }>(
+      "/api/recurring/summary",
+    ),
+
+  createRecurring: (body: {
+    name: string;
+    type: "income" | "expense";
+    amount: number;
+    category: string;
+    frequency: Frequency;
+    interval: number;
+    next_due: string;
+    note?: string;
+  }) => request<{ recurring: Recurring }>("/api/recurring", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+
+  payRecurring: (id: number) =>
+    request<{ recurring: Recurring; paid: { amount: number; occurred_on: string } }>(
+      `/api/recurring/${id}/pay`,
+      { method: "POST" },
+    ),
+
+  updateRecurring: (id: number, body: Partial<{ active: boolean; next_due: string }>) =>
+    request<{ recurring: Recurring }>(`/api/recurring/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteRecurring: (id: number) =>
+    request<{ ok: true }>(`/api/recurring/${id}`, { method: "DELETE" }),
 };
+
+export type Frequency = "daily" | "weekly" | "monthly" | "yearly";
+
+export interface Recurring {
+  id: number;
+  name: string;
+  type: "income" | "expense";
+  amount: number;
+  category: string;
+  frequency: Frequency;
+  interval: number;
+  next_due: string;
+  note: string | null;
+  active: boolean;
+  last_paid_on: string | null;
+  created_at: string;
+}
 
 export interface Goal {
   id: number;

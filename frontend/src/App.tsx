@@ -6,6 +6,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import MoneyLayout from "@/pages/money/MoneyLayout";
 import MoneyOverview from "@/pages/money/MoneyOverview";
+import Recurring from "@/pages/money/Recurring";
 import Goals from "@/pages/money/Goals";
 
 function FullScreenLoader() {
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/money" element={<MoneyLayout />}>
               <Route index element={<MoneyOverview />} />
+              <Route path="recurring" element={<Recurring />} />
               <Route path="goals" element={<Goals />} />
             </Route>
           </Route>

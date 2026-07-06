@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 
 const tabs = [
   { to: "/money", label: "Overview", end: true },
+  { to: "/money/recurring", label: "Recurring" },
   { to: "/money/goals", label: "Goals" },
 ];
 
