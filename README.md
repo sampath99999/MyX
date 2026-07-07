@@ -46,8 +46,11 @@ Single-user (you) today, built so family accounts can be added later.
 >   floating rate changes, full schedule + payment history
 > - ✅ **Money → Goals** — savings goals with progress bars, add/withdraw funds,
 >   auto-complete at 100%
+> - ✅ **Money → Investments** — manually-tracked holdings (stocks, mutual funds, FDs,
+>   PPF/EPF, gold, crypto, other) with invested vs current value and derived gain/loss;
+>   portfolio-value KPI + insight on the Money Dashboard
 > - ✅ **Money → Dashboard** — rich rollup (6-month trend, top categories, savings
->   rate, upcoming bills) with charts + a separate Transactions tab
+>   rate, upcoming bills, portfolio value) with charts + a separate Transactions tab
 > - ✅ **Tasks (Phases 1–3)** — **Spaces** keep Work/Personal/Freelance separate;
 >   Projects (List **or** Kanban board with drag-and-drop); Today · Upcoming · Inbox;
 >   labels, subtasks, priorities; natural-language quick-add (`pay rent tomorrow !p1 #home`);
@@ -57,7 +60,8 @@ Single-user (you) today, built so family accounts can be added later.
 >   with live preview and autosave; full-text search; masonry note cards.
 >
 > The Money section uses tabs (Dashboard · Transactions · Recurring · Budgets · Loans ·
-> Goals). Tasks uses Spaces (top-level contexts) → Projects → Tasks. One module at a time.
+> Goals · Investments). Tasks uses Spaces (top-level contexts) → Projects → Tasks. One
+> module at a time.
 
 ## 3. Architecture
 
@@ -127,7 +131,21 @@ goals (
 )
 ```
 Goals are a standalone tracker; contributions do **not** touch the transactions balance.
-More tables (tasks, notes, checklists…) are added per-module later.
+```sql
+investments (
+  id              INTEGER PK
+  user_id         INTEGER  -> users.id (cascade delete)
+  name            TEXT
+  type            TEXT     -- 'stocks' | 'mutual_fund' | 'fd' | 'ppf_epf' | 'gold' | 'crypto' | 'other'
+  invested_amount INTEGER  -- paise
+  current_value   INTEGER  -- paise, updated by hand (no live market data)
+  notes           TEXT     -- nullable
+  created_at      TEXT
+  updated_at      TEXT
+)
+```
+Investments are manually valued; gain/loss is derived as `current_value - invested_amount`.
+More tables (checklists, notes, memories…) are added per-module later.
 
 ### Money API (implemented)
 | Method | Path                          | Purpose                          |
@@ -145,6 +163,14 @@ More tables (tasks, notes, checklists…) are added per-module later.
 | POST   | `/api/goals/:id/contribute`   | Add/withdraw funds (`{amount}`, negative = withdraw) |
 | PATCH  | `/api/goals/:id`              | Edit name / target / emoji / date |
 | DELETE | `/api/goals/:id`              | Delete a goal                    |
+
+### Investments API (implemented)
+| Method | Path                          | Purpose                          |
+|--------|-------------------------------|----------------------------------|
+| GET    | `/api/investments`            | List holdings + portfolio totals (invested, current, gain) |
+| POST   | `/api/investments`            | Create a holding (`{name, type, invested, current?, notes?}`) |
+| PATCH  | `/api/investments/:id`        | Edit name / type / invested / current / notes |
+| DELETE | `/api/investments/:id`        | Delete a holding                 |
 
 All money routes require `Authorization: Bearer <jwt>` and are scoped to the logged-in user.
 
@@ -224,8 +250,19 @@ Money module (building out one sub-feature at a time):
 4. ✅ Budgets (monthly limits per category + alerts)
 5. ✅ Loans (EMI, reducing-balance, floating rate) — bank-accurate
    - Todo: personal debts / IOUs (money you lent or borrowed from people)
-6. Investments  ← next
-7. Money charts (spend by category, trends)
+6. ✅ Investments (manual holdings: stocks, mutual funds, FDs, PPF/EPF, gold, crypto)
+7. ✅ Money charts (spend by category, trends) — shipped as part of the Money Dashboard
 
-Then: Tasks + Checklists → Notes + Memories → cross-module dashboard → PWA/offline → reminders.
-```
+**Still remaining:**
+- Personal debts / IOUs (money lent to or borrowed from people — separate from bank Loans)
+- ✅ Tasks (Phases 1–3) — done
+- ✅ Notes — done
+- Checklists — reusable templates you tick off repeatedly (see [§2](#2-modules-roadmap))
+- Memories, Journal/diary, Mood tracker, Bookmarks, Contacts (Personal module)
+- Habits, Calendar/events, Reminders, Goals *(cross-module)*, Projects *(cross-module)*
+- Health & Body module (Fitness, Meals, Water, Medicines, Sleep)
+- Life Admin module (Documents vault, Passwords, Shopping lists, Travel planner, Vehicle)
+- Cross-module dashboard (today Dashboard only shows real Money numbers; other modules
+  are placeholders — see `/api/dashboard/summary` in [backend/src/index.ts](backend/src/index.ts))
+- PWA / offline support
+- Reminders / notifications
