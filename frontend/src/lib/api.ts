@@ -253,6 +253,62 @@ export const api = {
   deleteInvestment: (id: number) =>
     request<{ ok: true }>(`/api/investments/${id}`, { method: "DELETE" }),
 
+  // ----- Checklists -----
+  listChecklists: () => request<{ checklists: Checklist[] }>("/api/checklists"),
+  createChecklist: (body: { name: string; emoji?: string | null }) =>
+    request<{ checklist: Checklist }>("/api/checklists", { method: "POST", body: JSON.stringify(body) }),
+  getChecklist: (id: number) =>
+    request<{ checklist: Checklist; items: ChecklistItem[] }>(`/api/checklists/${id}`),
+  updateChecklist: (id: number, body: Partial<{ name: string; emoji: string | null }>) =>
+    request<{ checklist: Checklist }>(`/api/checklists/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteChecklist: (id: number) =>
+    request<{ ok: true }>(`/api/checklists/${id}`, { method: "DELETE" }),
+  resetChecklist: (id: number) =>
+    request<{ ok: true }>(`/api/checklists/${id}/reset`, { method: "POST" }),
+  addChecklistItem: (id: number, title: string) =>
+    request<{ item: ChecklistItem }>(`/api/checklists/${id}/items`, {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    }),
+  updateChecklistItem: (id: number, itemId: number, body: Partial<{ title: string; done: boolean }>) =>
+    request<{ item: ChecklistItem }>(`/api/checklists/${id}/items/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteChecklistItem: (id: number, itemId: number) =>
+    request<{ ok: true }>(`/api/checklists/${id}/items/${itemId}`, { method: "DELETE" }),
+
+  // ----- Memories -----
+  listMemoryTags: () => request<{ tags: string[] }>("/api/memories/tags"),
+  listMemories: (params?: { tag?: string; q?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.tag) p.set("tag", params.tag);
+    if (params?.q) p.set("q", params.q);
+    const qs = p.toString();
+    return request<{ memories: Memory[] }>(`/api/memories${qs ? `?${qs}` : ""}`);
+  },
+  createMemory: (body: {
+    title: string;
+    note?: string;
+    emoji?: string | null;
+    occurred_on?: string | null;
+    tags?: string[];
+  }) => request<{ memory: Memory }>("/api/memories", { method: "POST", body: JSON.stringify(body) }),
+  updateMemory: (
+    id: number,
+    body: Partial<{
+      title: string;
+      note: string;
+      emoji: string | null;
+      occurred_on: string | null;
+      tags: string[];
+    }>,
+  ) => request<{ memory: Memory }>(`/api/memories/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteMemory: (id: number) => request<{ ok: true }>(`/api/memories/${id}`, { method: "DELETE" }),
+
   // ----- Tasks: Spaces -----
   listSpaces: () => request<{ spaces: Space[] }>("/api/spaces"),
   createSpace: (body: { name: string; color?: string; icon?: string }) =>
@@ -597,6 +653,34 @@ export interface InvestmentTotals {
   gain: number;
   gainPercent: number;
   count: number;
+}
+
+export interface Checklist {
+  id: number;
+  name: string;
+  emoji: string | null;
+  position: number;
+  total: number;
+  done: number;
+  created_at: string;
+}
+
+export interface ChecklistItem {
+  id: number;
+  title: string;
+  done: boolean;
+  position: number;
+}
+
+export interface Memory {
+  id: number;
+  title: string;
+  note: string;
+  emoji: string | null;
+  occurred_on: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Transaction {

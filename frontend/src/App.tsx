@@ -21,6 +21,9 @@ import LabelView from "@/pages/tasks/LabelView";
 import NotesLayout from "@/pages/notes/NotesLayout";
 import NotesList from "@/pages/notes/NotesList";
 import NoteEditor from "@/pages/notes/NoteEditor";
+import ChecklistsList from "@/pages/checklists/ChecklistsList";
+import ChecklistDetail from "@/pages/checklists/ChecklistDetail";
+import MemoriesList from "@/pages/memories/MemoriesList";
 
 function FullScreenLoader() {
   return (
@@ -85,6 +88,9 @@ export default function App() {
               <Route index element={<NotesList />} />
               <Route path=":id" element={<NoteEditor />} />
             </Route>
+            <Route path="/checklists" element={<ChecklistsList />} />
+            <Route path="/checklists/:id" element={<ChecklistDetail />} />
+            <Route path="/memories" element={<MemoriesList />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

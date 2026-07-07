@@ -15,6 +15,8 @@ import taskRoutes from "./routes/tasks";
 import labelRoutes from "./routes/labels";
 import folderRoutes from "./routes/folders";
 import noteRoutes from "./routes/notes";
+import checklistRoutes from "./routes/checklists";
+import memoryRoutes from "./routes/memories";
 import { requireAuth } from "./middleware";
 import type { AppBindings } from "./types";
 
@@ -48,6 +50,8 @@ app.route("/api/tasks", taskRoutes);
 app.route("/api/labels", labelRoutes);
 app.route("/api/folders", folderRoutes);
 app.route("/api/notes", noteRoutes);
+app.route("/api/checklists", checklistRoutes);
+app.route("/api/memories", memoryRoutes);
 
 // Dashboard rollup. Money numbers are real; other modules are placeholders for now.
 app.get("/api/dashboard/summary", requireAuth, async (c) => {
