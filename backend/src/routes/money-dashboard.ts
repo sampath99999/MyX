@@ -33,6 +33,7 @@ money.get("/dashboard", async (c) => {
     budgetRows,
     goalRows,
     loanRows,
+    investmentRows,
     recurringRows,
     recentRows,
     lastMonthRow,
@@ -117,6 +118,10 @@ money.get("/dashboard", async (c) => {
         status: string;
         principal: number;
       }>(),
+
+    c.env.DB.prepare(`SELECT invested_amount, current_value FROM investments WHERE user_id = ?`)
+      .bind(uid)
+      .all<{ invested_amount: number; current_value: number }>(),
 
     c.env.DB.prepare(
       `SELECT id, name, type, amount, category, next_due, active
@@ -253,6 +258,16 @@ money.get("/dashboard", async (c) => {
     principal: activeLoans.reduce((s, l) => s + toRupees(l.principal), 0),
   };
 
+  const investmentTotals = (investmentRows.results ?? []).reduce(
+    (acc, i) => ({
+      invested: acc.invested + toRupees(i.invested_amount),
+      current: acc.current + toRupees(i.current_value),
+      count: acc.count + 1,
+    }),
+    { invested: 0, current: 0, count: 0 },
+  );
+  const investmentGain = investmentTotals.current - investmentTotals.invested;
+
   const upcoming = (recurringRows.results ?? []).map((r) => {
     const days = Math.ceil(
       (new Date(r.next_due + "T00:00:00").getTime() - Date.now()) / 86400000,
@@ -353,6 +368,12 @@ money.get("/dashboard", async (c) => {
       message: `${formatRupees(loanTotals.monthlyEmi)}/mo in loan EMIs · ${formatRupees(loanTotals.outstanding)} outstanding.`,
     });
   }
+  if (investmentTotals.count > 0) {
+    insights.push({
+      tone: investmentGain >= 0 ? "good" : "warn",
+      message: `Portfolio worth ${formatRupees(investmentTotals.current)} — ${investmentGain >= 0 ? "up" : "down"} ${formatRupees(Math.abs(investmentGain))} overall.`,
+    });
+  }
 
   return c.json({
     summary: {
@@ -371,6 +392,16 @@ money.get("/dashboard", async (c) => {
     budgets: { items: budgets, totals: budgetTotals },
     goals: { items: goalItems, totals: goalTotals },
     loans: loanTotals,
+    investments: {
+      count: investmentTotals.count,
+      invested: investmentTotals.invested,
+      current: investmentTotals.current,
+      gain: investmentGain,
+      gainPercent:
+        investmentTotals.invested > 0
+          ? Math.round((investmentGain / investmentTotals.invested) * 1000) / 10
+          : 0,
+    },
     recurring: {
       monthlyIncome: toRupees(recurringIncome),
       monthlyExpense: toRupees(recurringExpense),

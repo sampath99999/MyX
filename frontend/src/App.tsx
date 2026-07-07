@@ -11,6 +11,7 @@ import Recurring from "@/pages/money/Recurring";
 import Budgets from "@/pages/money/Budgets";
 import Loans from "@/pages/money/Loans";
 import Goals from "@/pages/money/Goals";
+import Investments from "@/pages/money/Investments";
 import TasksLayout from "@/pages/tasks/TasksLayout";
 import Today from "@/pages/tasks/Today";
 import Upcoming from "@/pages/tasks/Upcoming";
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="budgets" element={<Budgets />} />
               <Route path="loans" element={<Loans />} />
               <Route path="goals" element={<Goals />} />
+              <Route path="investments" element={<Investments />} />
             </Route>
             <Route path="/tasks" element={<TasksLayout />}>
               <Route index element={<Today />} />

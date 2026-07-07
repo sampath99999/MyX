@@ -32,6 +32,7 @@ import {
   Loader2,
   Info,
   CheckCircle2,
+  Wallet2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -148,8 +149,18 @@ export default function MoneyOverview() {
     );
   }
 
-  const { summary, monthlyTrend, categories, budgets, goals, loans, recurring, recentTransactions, insights } =
-    data;
+  const {
+    summary,
+    monthlyTrend,
+    categories,
+    budgets,
+    goals,
+    loans,
+    investments,
+    recurring,
+    recentTransactions,
+    insights,
+  } = data;
   const netPositive = summary.netMonth >= 0;
 
   const kpis = [
@@ -199,6 +210,17 @@ export default function MoneyOverview() {
       hint:
         goals.totals.count > 0
           ? `${goals.totals.completed}/${goals.totals.count} complete`
+          : undefined,
+    },
+    {
+      label: "Portfolio value",
+      value: investments.count > 0 ? formatMoney(investments.current) : "—",
+      icon: Wallet2,
+      accent: investments.gain >= 0 ? "text-emerald-400" : "text-rose-400",
+      ring: investments.gain >= 0 ? "bg-emerald-500/10" : "bg-rose-500/10",
+      hint:
+        investments.count > 0
+          ? `${investments.gain >= 0 ? "+" : ""}${formatMoney(investments.gain)} (${investments.gainPercent >= 0 ? "+" : ""}${investments.gainPercent}%)`
           : undefined,
     },
   ];
@@ -267,7 +289,7 @@ export default function MoneyOverview() {
       </Card>
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3">
         {kpis.map((k, i) => (
           <Card
             key={k.label}

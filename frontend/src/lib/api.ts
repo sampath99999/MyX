@@ -219,6 +219,40 @@ export const api = {
 
   deleteLoan: (id: number) => request<{ ok: true }>(`/api/loans/${id}`, { method: "DELETE" }),
 
+  // ----- Investments -----
+  listInvestments: () =>
+    request<{ investments: Investment[]; totals: InvestmentTotals }>("/api/investments"),
+
+  createInvestment: (body: {
+    name: string;
+    type: InvestmentType;
+    invested: number;
+    current?: number;
+    notes?: string;
+  }) =>
+    request<{ investment: Investment }>("/api/investments", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateInvestment: (
+    id: number,
+    body: Partial<{
+      name: string;
+      type: InvestmentType;
+      invested: number;
+      current: number;
+      notes: string | null;
+    }>,
+  ) =>
+    request<{ investment: Investment }>(`/api/investments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteInvestment: (id: number) =>
+    request<{ ok: true }>(`/api/investments/${id}`, { method: "DELETE" }),
+
   // ----- Tasks: Spaces -----
   listSpaces: () => request<{ spaces: Space[] }>("/api/spaces"),
   createSpace: (body: { name: string; color?: string; icon?: string }) =>
@@ -542,6 +576,29 @@ export interface Goal {
   completed_at: string | null;
 }
 
+export type InvestmentType = "stocks" | "mutual_fund" | "fd" | "ppf_epf" | "gold" | "crypto" | "other";
+
+export interface Investment {
+  id: number;
+  name: string;
+  type: InvestmentType;
+  invested: number;
+  current: number;
+  gain: number;
+  gainPercent: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestmentTotals {
+  invested: number;
+  current: number;
+  gain: number;
+  gainPercent: number;
+  count: number;
+}
+
 export interface Transaction {
   id: number;
   type: "income" | "expense";
@@ -580,6 +637,13 @@ export interface MoneyDashboardData {
     outstanding: number;
     monthlyEmi: number;
     principal: number;
+  };
+  investments: {
+    count: number;
+    invested: number;
+    current: number;
+    gain: number;
+    gainPercent: number;
   };
   recurring: {
     monthlyIncome: number;

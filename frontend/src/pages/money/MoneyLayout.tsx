@@ -10,6 +10,7 @@ const tabs = [
   { to: "/money/budgets", label: "Budgets" },
   { to: "/money/loans", label: "Loans" },
   { to: "/money/goals", label: "Goals" },
+  { to: "/money/investments", label: "Investments" },
 ];
 
 export default function MoneyLayout() {
