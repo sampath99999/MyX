@@ -13,6 +13,7 @@ interface ProjectRow {
   color: string;
   archived: number;
   position: number;
+  view: string;
   created_at: string;
 }
 
@@ -24,6 +25,7 @@ function serialize(p: ProjectRow & { open_count?: number }) {
     color: p.color,
     archived: p.archived === 1,
     position: p.position,
+    view: p.view === "board" ? "board" : "list",
     open_count: p.open_count ?? 0,
     created_at: p.created_at,
   };
@@ -97,14 +99,127 @@ projects.patch("/:id", async (c) => {
   const name = body?.name != null ? String(body.name).trim() : project.name;
   const color = body?.color != null ? String(body.color) : project.color;
   const archived = body?.archived != null ? (body.archived ? 1 : 0) : project.archived;
+  const view = body?.view === "board" || body?.view === "list" ? body.view : project.view;
   if (!name) throw new HTTPException(400, { message: "Project name is required" });
 
   const updated = await c.env.DB.prepare(
-    "UPDATE projects SET name = ?, color = ?, archived = ? WHERE id = ? AND user_id = ? RETURNING *",
+    "UPDATE projects SET name = ?, color = ?, archived = ?, view = ? WHERE id = ? AND user_id = ? RETURNING *",
   )
-    .bind(name, color, archived, id, user.sub)
+    .bind(name, color, archived, view, id, user.sub)
     .first<ProjectRow>();
   return c.json({ project: serialize(updated!) });
+});
+
+// ---------- Sections (Kanban columns) ----------
+
+interface SectionRow {
+  id: number;
+  project_id: number;
+  name: string;
+  position: number;
+}
+
+const DEFAULT_SECTIONS = ["To do", "Doing", "Done"];
+
+/** GET /api/projects/:id/sections — seeds To do / Doing / Done on first use. */
+projects.get("/:id/sections", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const project = await c.env.DB.prepare("SELECT id FROM projects WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first();
+  if (!project) throw new HTTPException(404, { message: "Project not found" });
+
+  let { results } = await c.env.DB.prepare(
+    "SELECT id, project_id, name, position FROM sections WHERE project_id = ? ORDER BY position, id",
+  )
+    .bind(id)
+    .all<SectionRow>();
+
+  if (!results || results.length === 0) {
+    await c.env.DB.batch(
+      DEFAULT_SECTIONS.map((name, i) =>
+        c.env.DB.prepare(
+          "INSERT INTO sections (user_id, project_id, name, position) VALUES (?, ?, ?, ?)",
+        ).bind(user.sub, id, name, i),
+      ),
+    );
+    const seeded = await c.env.DB.prepare(
+      "SELECT id, project_id, name, position FROM sections WHERE project_id = ? ORDER BY position, id",
+    )
+      .bind(id)
+      .all<SectionRow>();
+    results = seeded.results;
+  }
+
+  return c.json({ sections: results ?? [] });
+});
+
+/** POST /api/projects/:id/sections — add a column. */
+projects.post("/:id/sections", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  const body = await c.req.json().catch(() => null);
+  const name = String(body?.name ?? "").trim();
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+  if (!name) throw new HTTPException(400, { message: "Section name is required" });
+
+  const project = await c.env.DB.prepare("SELECT id FROM projects WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first();
+  if (!project) throw new HTTPException(404, { message: "Project not found" });
+
+  const posRow = await c.env.DB.prepare(
+    "SELECT COALESCE(MAX(position), -1) + 1 AS pos FROM sections WHERE project_id = ?",
+  )
+    .bind(id)
+    .first<{ pos: number }>();
+
+  const created = await c.env.DB.prepare(
+    "INSERT INTO sections (user_id, project_id, name, position) VALUES (?, ?, ?, ?) RETURNING id, project_id, name, position",
+  )
+    .bind(user.sub, id, name, posRow?.pos ?? 0)
+    .first<SectionRow>();
+  return c.json({ section: created }, 201);
+});
+
+/** PATCH /api/projects/:id/sections/:sectionId — rename. */
+projects.patch("/:id/sections/:sectionId", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  const sectionId = Number(c.req.param("sectionId"));
+  const body = await c.req.json().catch(() => null);
+  const name = String(body?.name ?? "").trim();
+  if (!Number.isInteger(id) || !Number.isInteger(sectionId))
+    throw new HTTPException(400, { message: "Invalid id" });
+  if (!name) throw new HTTPException(400, { message: "Section name is required" });
+
+  const res = await c.env.DB.prepare(
+    "UPDATE sections SET name = ? WHERE id = ? AND project_id = ? AND user_id = ?",
+  )
+    .bind(name, sectionId, id, user.sub)
+    .run();
+  if (!res.meta.changes) throw new HTTPException(404, { message: "Section not found" });
+  return c.json({ ok: true });
+});
+
+/** DELETE /api/projects/:id/sections/:sectionId — its tasks fall back to no section. */
+projects.delete("/:id/sections/:sectionId", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  const sectionId = Number(c.req.param("sectionId"));
+  if (!Number.isInteger(id) || !Number.isInteger(sectionId))
+    throw new HTTPException(400, { message: "Invalid id" });
+
+  const res = await c.env.DB.prepare(
+    "DELETE FROM sections WHERE id = ? AND project_id = ? AND user_id = ?",
+  )
+    .bind(sectionId, id, user.sub)
+    .run();
+  if (!res.meta.changes) throw new HTTPException(404, { message: "Section not found" });
+  return c.json({ ok: true });
 });
 
 /** DELETE /api/projects/:id — its tasks fall back to Inbox (project_id -> NULL). */

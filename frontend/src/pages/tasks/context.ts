@@ -1,12 +1,13 @@
 import { useOutletContext } from "react-router-dom";
-import type { Space, Project } from "@/lib/api";
+import type { Space, Project, Label } from "@/lib/api";
 
 export interface TasksContextValue {
   spaceId: number | null; // null = All Spaces
   spaces: Space[];
   currentSpace: Space | null; // null when viewing All
   projects: Project[];
-  counts: { today: number; inbox: number };
+  labels: Label[];
+  counts: { today: number; inbox: number; upcoming: number };
   today: string; // local YYYY-MM-DD
   reloadAll: () => Promise<void>;
 }

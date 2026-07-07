@@ -51,7 +51,14 @@ export default function Inbox() {
         </div>
       </div>
 
-      <QuickAddTask spaceId={targetSpace} projectId={null} defaultDue={null} onCreated={reload} />
+      <QuickAddTask
+        spaceId={targetSpace}
+        projectId={null}
+        defaultDue={null}
+        labels={ctx.labels}
+        onCreated={reload}
+        onLabelsChanged={ctx.reloadAll}
+      />
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -67,7 +74,14 @@ export default function Inbox() {
       ) : (
         <div className="flex flex-col">
           {tasks.map((t) => (
-            <TaskItem key={t.id} task={t} context={contextFor(t)} onChanged={reload} />
+            <TaskItem
+              key={t.id}
+              task={t}
+              context={contextFor(t)}
+              allLabels={ctx.labels}
+              onChanged={reload}
+              onLabelsChanged={ctx.reloadAll}
+            />
           ))}
         </div>
       )}

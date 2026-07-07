@@ -105,19 +105,18 @@ Reuse: premium theme, Dialog, Input, Button, Card, CategoryPicker patterns.
 
 ## Phased build (one sub-feature at a time, like Money)
 
-**Phase 1 — MVP foundation** ⭐ (start here)
-- Spaces (create/switch, default Personal/Work/Freelance)
-- Projects within a space
-- Tasks (list view): create via quick-add, complete/reopen, due date, delete
-- Views: Today + Inbox
-- The work/personal separation working end to end
+**Phase 1 — MVP foundation** ✅ DONE
+- Spaces (create/switch; default Personal + Work), Projects, Tasks (list),
+  Today + Inbox, quick-add, complete/reopen/delete
 
-**Phase 2 — Power**
-- Priorities (P1–P4), labels/tags, subtasks/checklist, Upcoming view
-- Natural-language quick-add parsing
+**Phase 2 — Power** ✅ DONE
+- Priorities (P1–P3), labels/tags (+ label filter view), subtasks/checklist,
+  Upcoming view, natural-language quick-add (`tomorrow`, `!p1`, `#label`),
+  task detail dialog (edit title/notes/due/priority/labels/subtasks)
 
-**Phase 3 — Boards**
-- Kanban board view per project, sections, drag & drop
+**Phase 3 — Boards** ✅ DONE
+- Per-project List/Board toggle, Kanban sections (auto-seeded To do/Doing/Done),
+  add columns/cards, native drag-and-drop between columns
 
 **Phase 4 — Time**
 - Recurring tasks, reminders/notifications, calendar view

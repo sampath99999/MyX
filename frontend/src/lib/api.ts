@@ -234,7 +234,10 @@ export const api = {
     ),
   createProject: (body: { space_id: number; name: string; color?: string }) =>
     request<{ project: Project }>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
-  updateProject: (id: number, body: Partial<{ name: string; color: string; archived: boolean }>) =>
+  updateProject: (
+    id: number,
+    body: Partial<{ name: string; color: string; archived: boolean; view: "list" | "board" }>,
+  ) =>
     request<{ project: Project }>(`/api/projects/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
@@ -242,27 +245,40 @@ export const api = {
   deleteProject: (id: number) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
 
   // ----- Tasks -----
-  listTasks: (params: { space_id?: number; project_id?: number; view?: "today" | "inbox"; today?: string }) => {
+  listTasks: (params: {
+    space_id?: number;
+    project_id?: number;
+    view?: "today" | "inbox" | "upcoming";
+    label_id?: number;
+    today?: string;
+  }) => {
     const q = new URLSearchParams();
     if (params.space_id != null) q.set("space_id", String(params.space_id));
     if (params.project_id != null) q.set("project_id", String(params.project_id));
     if (params.view) q.set("view", params.view);
+    if (params.label_id != null) q.set("label_id", String(params.label_id));
     if (params.today) q.set("today", params.today);
     return request<{ tasks: Task[] }>(`/api/tasks?${q.toString()}`);
   },
+  getTask: (id: number) =>
+    request<{ task: Task; labels: Label[]; subtasks: Subtask[] }>(`/api/tasks/${id}`),
   taskCounts: (params: { space_id?: number; today?: string }) => {
     const q = new URLSearchParams();
     if (params.space_id != null) q.set("space_id", String(params.space_id));
     if (params.today) q.set("today", params.today);
-    return request<{ today: number; inbox: number }>(`/api/tasks/counts?${q.toString()}`);
+    return request<{ today: number; inbox: number; upcoming: number }>(
+      `/api/tasks/counts?${q.toString()}`,
+    );
   },
   createTask: (body: {
     title: string;
     space_id: number;
     project_id?: number | null;
+    section_id?: number | null;
     due_date?: string | null;
     priority?: number;
     notes?: string;
+    label_ids?: number[];
   }) => request<{ task: Task }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
   updateTask: (
     id: number,
@@ -279,6 +295,47 @@ export const api = {
     request<{ task: Task }>(`/api/tasks/${id}/complete`, { method: "POST" }),
   reopenTask: (id: number) => request<{ task: Task }>(`/api/tasks/${id}/reopen`, { method: "POST" }),
   deleteTask: (id: number) => request<{ ok: true }>(`/api/tasks/${id}`, { method: "DELETE" }),
+  moveTask: (id: number, section_id: number | null, position: number) =>
+    request<{ ok: true }>(`/api/tasks/${id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ section_id, position }),
+    }),
+  setTaskLabels: (id: number, label_ids: number[]) =>
+    request<{ ok: true }>(`/api/tasks/${id}/labels`, {
+      method: "PUT",
+      body: JSON.stringify({ label_ids }),
+    }),
+
+  // ----- Subtasks -----
+  addSubtask: (taskId: number, title: string) =>
+    request<{ subtask: Subtask }>(`/api/tasks/${taskId}/subtasks`, {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    }),
+  updateSubtask: (taskId: number, subId: number, body: Partial<{ title: string; done: boolean }>) =>
+    request<{ subtask: Subtask }>(`/api/tasks/${taskId}/subtasks/${subId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteSubtask: (taskId: number, subId: number) =>
+    request<{ ok: true }>(`/api/tasks/${taskId}/subtasks/${subId}`, { method: "DELETE" }),
+
+  // ----- Labels -----
+  listLabels: () => request<{ labels: Label[] }>("/api/labels"),
+  createLabel: (name: string, color?: string) =>
+    request<{ label: Label }>("/api/labels", { method: "POST", body: JSON.stringify({ name, color }) }),
+  deleteLabel: (id: number) => request<{ ok: true }>(`/api/labels/${id}`, { method: "DELETE" }),
+
+  // ----- Sections (Kanban) -----
+  listSections: (projectId: number) =>
+    request<{ sections: Section[] }>(`/api/projects/${projectId}/sections`),
+  createSection: (projectId: number, name: string) =>
+    request<{ section: Section }>(`/api/projects/${projectId}/sections`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  deleteSection: (projectId: number, sectionId: number) =>
+    request<{ ok: true }>(`/api/projects/${projectId}/sections/${sectionId}`, { method: "DELETE" }),
 };
 
 export interface Space {
@@ -297,21 +354,47 @@ export interface Project {
   color: string;
   archived: boolean;
   position: number;
+  view: "list" | "board";
   open_count: number;
   created_at: string;
+}
+
+export interface Label {
+  id: number;
+  name: string;
+  color: string;
+  created_at?: string;
+}
+
+export interface Subtask {
+  id: number;
+  title: string;
+  done: boolean;
+  position: number;
+}
+
+export interface Section {
+  id: number;
+  project_id: number;
+  name: string;
+  position: number;
 }
 
 export interface Task {
   id: number;
   space_id: number;
   project_id: number | null;
+  section_id: number | null;
   title: string;
   notes: string | null;
   priority: number; // 1=P1 (highest) .. 4=none
   due_date: string | null;
   status: "open" | "done";
   completed_at: string | null;
+  position: number;
   created_at: string;
+  labels: Label[];
+  subtasks: { total: number; done: number };
 }
 
 export interface Loan {

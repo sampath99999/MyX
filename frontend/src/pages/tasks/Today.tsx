@@ -63,7 +63,13 @@ export default function Today() {
         </div>
       </div>
 
-      <QuickAddTask spaceId={targetSpace} defaultDue={ctx.today} onCreated={reload} />
+      <QuickAddTask
+        spaceId={targetSpace}
+        defaultDue={ctx.today}
+        labels={ctx.labels}
+        onCreated={reload}
+        onLabelsChanged={ctx.reloadAll}
+      />
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -79,7 +85,14 @@ export default function Today() {
       ) : (
         <div className="flex flex-col">
           {tasks.map((t) => (
-            <TaskItem key={t.id} task={t} context={contextFor(t)} onChanged={reload} />
+            <TaskItem
+              key={t.id}
+              task={t}
+              context={contextFor(t)}
+              allLabels={ctx.labels}
+              onChanged={reload}
+              onLabelsChanged={ctx.reloadAll}
+            />
           ))}
         </div>
       )}

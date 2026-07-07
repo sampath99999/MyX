@@ -48,9 +48,11 @@ Single-user (you) today, built so family accounts can be added later.
 >   auto-complete at 100%
 > - ✅ **Money → Dashboard** — rich rollup (6-month trend, top categories, savings
 >   rate, upcoming bills) with charts + a separate Transactions tab
-> - ✅ **Tasks (Phase 1 MVP)** — **Spaces** keep Work/Personal/Freelance separate;
->   Projects within a space; Today + Inbox views; quick-add with due date + priority;
->   complete/reopen/delete. See [docs/TASKS_PLAN.md](docs/TASKS_PLAN.md).
+> - ✅ **Tasks (Phases 1–3)** — **Spaces** keep Work/Personal/Freelance separate;
+>   Projects (List **or** Kanban board with drag-and-drop); Today · Upcoming · Inbox;
+>   labels, subtasks, priorities; natural-language quick-add (`pay rent tomorrow !p1 #home`);
+>   task detail dialog; in-app help with reference links. See
+>   [docs/TASKS_PLAN.md](docs/TASKS_PLAN.md).
 >
 > The Money section uses tabs (Dashboard · Transactions · Recurring · Budgets · Loans ·
 > Goals). Tasks uses Spaces (top-level contexts) → Projects → Tasks. One module at a time.
