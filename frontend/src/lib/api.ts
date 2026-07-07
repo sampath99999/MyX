@@ -336,7 +336,76 @@ export const api = {
     }),
   deleteSection: (projectId: number, sectionId: number) =>
     request<{ ok: true }>(`/api/projects/${projectId}/sections/${sectionId}`, { method: "DELETE" }),
+
+  // ----- Notes: Folders -----
+  listFolders: () => request<{ folders: Folder[] }>("/api/folders"),
+  createFolder: (name: string, color?: string) =>
+    request<{ folder: Folder }>("/api/folders", { method: "POST", body: JSON.stringify({ name, color }) }),
+  updateFolder: (id: number, body: Partial<{ name: string; color: string }>) =>
+    request<{ folder: Folder }>(`/api/folders/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteFolder: (id: number) => request<{ ok: true }>(`/api/folders/${id}`, { method: "DELETE" }),
+
+  // ----- Notes -----
+  listNoteTags: () => request<{ tags: string[] }>("/api/notes/tags"),
+  listNotes: (params: { folder_id?: number; view?: "pinned" | "trash"; tag?: string; q?: string }) => {
+    const p = new URLSearchParams();
+    if (params.folder_id != null) p.set("folder_id", String(params.folder_id));
+    if (params.view) p.set("view", params.view);
+    if (params.tag) p.set("tag", params.tag);
+    if (params.q) p.set("q", params.q);
+    return request<{ notes: NoteListItem[] }>(`/api/notes?${p.toString()}`);
+  },
+  getNote: (id: number) => request<{ note: Note }>(`/api/notes/${id}`),
+  createNote: (body: { title?: string; content?: string; folder_id?: number | null; tags?: string[] }) =>
+    request<{ note: Note }>("/api/notes", { method: "POST", body: JSON.stringify(body) }),
+  updateNote: (
+    id: number,
+    body: Partial<{
+      title: string;
+      content: string;
+      folder_id: number | null;
+      tags: string[];
+      pinned: boolean;
+      color: string | null;
+      archived: boolean;
+    }>,
+  ) => request<{ note: Note }>(`/api/notes/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteNote: (id: number) => request<{ ok: true }>(`/api/notes/${id}`, { method: "DELETE" }),
 };
+
+export interface Folder {
+  id: number;
+  name: string;
+  color: string;
+  position: number;
+  note_count: number;
+  created_at?: string;
+}
+
+export interface NoteListItem {
+  id: number;
+  folder_id: number | null;
+  title: string;
+  snippet: string;
+  tags: string[];
+  pinned: boolean;
+  color: string | null;
+  archived: boolean;
+  updated_at: string;
+}
+
+export interface Note {
+  id: number;
+  folder_id: number | null;
+  title: string;
+  content: string;
+  tags: string[];
+  pinned: boolean;
+  color: string | null;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Space {
   id: number;

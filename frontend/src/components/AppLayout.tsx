@@ -15,7 +15,7 @@ const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, ready: true },
   { to: "/money", label: "Money", icon: Wallet, ready: true },
   { to: "/tasks", label: "Tasks", icon: CheckCircle2, ready: true },
-  { to: "/notes", label: "Notes", icon: StickyNote, ready: false },
+  { to: "/notes", label: "Notes", icon: StickyNote, ready: true },
   { to: "/memories", label: "Memories", icon: Brain, ready: false },
   { to: "/checklists", label: "Checklists", icon: ListChecks, ready: false },
 ];

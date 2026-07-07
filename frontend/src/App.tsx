@@ -17,6 +17,9 @@ import Upcoming from "@/pages/tasks/Upcoming";
 import Inbox from "@/pages/tasks/Inbox";
 import Project from "@/pages/tasks/Project";
 import LabelView from "@/pages/tasks/LabelView";
+import NotesLayout from "@/pages/notes/NotesLayout";
+import NotesList from "@/pages/notes/NotesList";
+import NoteEditor from "@/pages/notes/NoteEditor";
 
 function FullScreenLoader() {
   return (
@@ -75,6 +78,10 @@ export default function App() {
               <Route path="inbox" element={<Inbox />} />
               <Route path="project/:id" element={<Project />} />
               <Route path="label/:id" element={<LabelView />} />
+            </Route>
+            <Route path="/notes" element={<NotesLayout />}>
+              <Route index element={<NotesList />} />
+              <Route path=":id" element={<NoteEditor />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

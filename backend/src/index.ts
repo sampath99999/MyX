@@ -12,6 +12,8 @@ import spaceRoutes from "./routes/spaces";
 import projectRoutes from "./routes/projects";
 import taskRoutes from "./routes/tasks";
 import labelRoutes from "./routes/labels";
+import folderRoutes from "./routes/folders";
+import noteRoutes from "./routes/notes";
 import { requireAuth } from "./middleware";
 import type { AppBindings } from "./types";
 
@@ -42,6 +44,8 @@ app.route("/api/spaces", spaceRoutes);
 app.route("/api/projects", projectRoutes);
 app.route("/api/tasks", taskRoutes);
 app.route("/api/labels", labelRoutes);
+app.route("/api/folders", folderRoutes);
+app.route("/api/notes", noteRoutes);
 
 // Dashboard rollup. Money numbers are real; other modules are placeholders for now.
 app.get("/api/dashboard/summary", requireAuth, async (c) => {

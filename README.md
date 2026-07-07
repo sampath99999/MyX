@@ -53,6 +53,8 @@ Single-user (you) today, built so family accounts can be added later.
 >   labels, subtasks, priorities; natural-language quick-add (`pay rent tomorrow !p1 #home`);
 >   task detail dialog; in-app help with reference links. See
 >   [docs/TASKS_PLAN.md](docs/TASKS_PLAN.md).
+> - ✅ **Notes** — notebooks (folders) + tags + pinning + Trash; markdown editor
+>   with live preview and autosave; full-text search; masonry note cards.
 >
 > The Money section uses tabs (Dashboard · Transactions · Recurring · Budgets · Loans ·
 > Goals). Tasks uses Spaces (top-level contexts) → Projects → Tasks. One module at a time.
