@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name myx-app"
+    "deploy": "npm run build && wrangler pages deploy dist --project-name myx-app --branch main --commit-dirty=true"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.18",

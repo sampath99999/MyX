@@ -185,29 +185,35 @@ npm run dev
 
 Local frontend calls the local Worker at `http://localhost:8787` (see `frontend/.env`).
 
-## 7. Deploy (production, free)
+## 7. Live URLs (deployed 🎉)
 
+- **App:** https://myx-app.pages.dev
+- **API:** https://myx-api.samchitech.workers.dev
+
+### Redeploy after changes
 ```bash
-# 1. Backend → Workers
+# Backend (Worker + remote D1)
 cd backend
-npm run db:migrate                       # apply migrations to remote D1
-npx wrangler secret put JWT_SECRET       # set a strong random secret
-npm run deploy                           # deploys Worker, prints its URL
+npm run db:migrate        # only if there are new migrations
+npm run deploy
 
-# 2. Frontend → Pages
+# Frontend (Pages, production)
 cd frontend
-# set VITE_API_URL to the deployed Worker URL in .env.production
-npm run build
-npx wrangler pages deploy dist --project-name myx-app
+npm run deploy            # build + deploy to myx-app (branch main = production)
+
+# Or both from the repo root:
+npm run deploy
 ```
+`JWT_SECRET` is already set as a Worker secret (production). Rotate with
+`npx wrangler secret put JWT_SECRET` in `backend/`.
 
-## 8. Cloudflare resources (already created)
+## 8. Cloudflare resources
 
-| Resource | Name     | ID                                     |
-|----------|----------|----------------------------------------|
-| D1       | `myx-db` | `ab5a4c50-4c48-41b6-ae3e-02ce46b63b82` |
-| Worker   | `myx-api`| created on first `deploy`              |
-| Pages    | `myx-app`| created on first `pages deploy`        |
+| Resource | Name      | Detail                                       |
+|----------|-----------|----------------------------------------------|
+| D1       | `myx-db`  | `ab5a4c50-4c48-41b6-ae3e-02ce46b63b82`       |
+| Worker   | `myx-api` | https://myx-api.samchitech.workers.dev       |
+| Pages    | `myx-app` | https://myx-app.pages.dev (prod branch `main`) |
 
 ## 9. Roadmap
 
