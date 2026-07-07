@@ -218,7 +218,101 @@ export const api = {
     request<{ loan: Loan }>(`/api/loans/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   deleteLoan: (id: number) => request<{ ok: true }>(`/api/loans/${id}`, { method: "DELETE" }),
+
+  // ----- Tasks: Spaces -----
+  listSpaces: () => request<{ spaces: Space[] }>("/api/spaces"),
+  createSpace: (body: { name: string; color?: string; icon?: string }) =>
+    request<{ space: Space }>("/api/spaces", { method: "POST", body: JSON.stringify(body) }),
+  updateSpace: (id: number, body: Partial<{ name: string; color: string; icon: string }>) =>
+    request<{ space: Space }>(`/api/spaces/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteSpace: (id: number) => request<{ ok: true }>(`/api/spaces/${id}`, { method: "DELETE" }),
+
+  // ----- Tasks: Projects -----
+  listProjects: (spaceId?: number) =>
+    request<{ projects: Project[] }>(
+      `/api/projects${spaceId != null ? `?space_id=${spaceId}` : ""}`,
+    ),
+  createProject: (body: { space_id: number; name: string; color?: string }) =>
+    request<{ project: Project }>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
+  updateProject: (id: number, body: Partial<{ name: string; color: string; archived: boolean }>) =>
+    request<{ project: Project }>(`/api/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteProject: (id: number) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
+
+  // ----- Tasks -----
+  listTasks: (params: { space_id?: number; project_id?: number; view?: "today" | "inbox"; today?: string }) => {
+    const q = new URLSearchParams();
+    if (params.space_id != null) q.set("space_id", String(params.space_id));
+    if (params.project_id != null) q.set("project_id", String(params.project_id));
+    if (params.view) q.set("view", params.view);
+    if (params.today) q.set("today", params.today);
+    return request<{ tasks: Task[] }>(`/api/tasks?${q.toString()}`);
+  },
+  taskCounts: (params: { space_id?: number; today?: string }) => {
+    const q = new URLSearchParams();
+    if (params.space_id != null) q.set("space_id", String(params.space_id));
+    if (params.today) q.set("today", params.today);
+    return request<{ today: number; inbox: number }>(`/api/tasks/counts?${q.toString()}`);
+  },
+  createTask: (body: {
+    title: string;
+    space_id: number;
+    project_id?: number | null;
+    due_date?: string | null;
+    priority?: number;
+    notes?: string;
+  }) => request<{ task: Task }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  updateTask: (
+    id: number,
+    body: Partial<{
+      title: string;
+      notes: string | null;
+      priority: number;
+      due_date: string | null;
+      project_id: number | null;
+      space_id: number;
+    }>,
+  ) => request<{ task: Task }>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  completeTask: (id: number) =>
+    request<{ task: Task }>(`/api/tasks/${id}/complete`, { method: "POST" }),
+  reopenTask: (id: number) => request<{ task: Task }>(`/api/tasks/${id}/reopen`, { method: "POST" }),
+  deleteTask: (id: number) => request<{ ok: true }>(`/api/tasks/${id}`, { method: "DELETE" }),
 };
+
+export interface Space {
+  id: number;
+  name: string;
+  color: string;
+  icon: string;
+  position: number;
+  created_at: string;
+}
+
+export interface Project {
+  id: number;
+  space_id: number;
+  name: string;
+  color: string;
+  archived: boolean;
+  position: number;
+  open_count: number;
+  created_at: string;
+}
+
+export interface Task {
+  id: number;
+  space_id: number;
+  project_id: number | null;
+  title: string;
+  notes: string | null;
+  priority: number; // 1=P1 (highest) .. 4=none
+  due_date: string | null;
+  status: "open" | "done";
+  completed_at: string | null;
+  created_at: string;
+}
 
 export interface Loan {
   id: number;

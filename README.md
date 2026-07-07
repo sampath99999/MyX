@@ -46,9 +46,14 @@ Single-user (you) today, built so family accounts can be added later.
 >   floating rate changes, full schedule + payment history
 > - ✅ **Money → Goals** — savings goals with progress bars, add/withdraw funds,
 >   auto-complete at 100%
+> - ✅ **Money → Dashboard** — rich rollup (6-month trend, top categories, savings
+>   rate, upcoming bills) with charts + a separate Transactions tab
+> - ✅ **Tasks (Phase 1 MVP)** — **Spaces** keep Work/Personal/Freelance separate;
+>   Projects within a space; Today + Inbox views; quick-add with due date + priority;
+>   complete/reopen/delete. See [docs/TASKS_PLAN.md](docs/TASKS_PLAN.md).
 >
-> The Money section uses tabs (Overview · Recurring · Budgets · Loans · Goals) so it
-> can grow without cluttering the sidebar. Modules are added one at a time.
+> The Money section uses tabs (Dashboard · Transactions · Recurring · Budgets · Loans ·
+> Goals). Tasks uses Spaces (top-level contexts) → Projects → Tasks. One module at a time.
 
 ## 3. Architecture
 

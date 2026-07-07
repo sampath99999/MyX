@@ -11,6 +11,10 @@ import Recurring from "@/pages/money/Recurring";
 import Budgets from "@/pages/money/Budgets";
 import Loans from "@/pages/money/Loans";
 import Goals from "@/pages/money/Goals";
+import TasksLayout from "@/pages/tasks/TasksLayout";
+import Today from "@/pages/tasks/Today";
+import Inbox from "@/pages/tasks/Inbox";
+import Project from "@/pages/tasks/Project";
 
 function FullScreenLoader() {
   return (
@@ -62,6 +66,11 @@ export default function App() {
               <Route path="budgets" element={<Budgets />} />
               <Route path="loans" element={<Loans />} />
               <Route path="goals" element={<Goals />} />
+            </Route>
+            <Route path="/tasks" element={<TasksLayout />}>
+              <Route index element={<Today />} />
+              <Route path="inbox" element={<Inbox />} />
+              <Route path="project/:id" element={<Project />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
