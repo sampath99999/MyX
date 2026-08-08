@@ -24,19 +24,59 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Fired when the server rejects our token — expired, or revoked by a logout on
+ * another device. AuthProvider listens and drops the session so the router sends
+ * the user to /login instead of leaving them staring at failed panels.
+ */
+export const UNAUTHORIZED_EVENT = "myx:unauthorized";
+
+/** Sign-in and sign-up legitimately return 401/403; those must not sign us out. */
+const isAuthEndpoint = (path: string) =>
+  path.startsWith("/api/auth/login") || path.startsWith("/api/auth/register");
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
+  // Only set a JSON content type when there is actually a body — sending it on
+  // GET/DELETE provokes a CORS preflight for nothing.
+  if (options.body != null) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    // Tokens are short-lived and revocable now, so a 401 mid-session is a real
+    // possibility rather than an anomaly. Tear the session down once, here,
+    // instead of letting every screen render its own confusing error.
+    if (res.status === 401 && !isAuthEndpoint(path)) {
+      clearToken();
+      window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+    }
     throw new ApiError((data as { error?: string })?.error ?? "Request failed", res.status);
   }
   return data as T;
+}
+
+/**
+ * Fire-and-forget write that survives the page going away.
+ *
+ * `keepalive` lets the browser finish the request after unload, which
+ * navigator.sendBeacon cannot do here because it can't set an Authorization
+ * header. Used to flush a pending note autosave on tab close.
+ */
+export function requestKeepalive(path: string, body: unknown): void {
+  const token = getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  // Errors here are unobservable by design — the page is going away.
+  void fetch(`${API_URL}${path}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(body),
+    keepalive: true,
+  }).catch(() => {});
 }
 
 export interface User {
@@ -58,7 +98,22 @@ export const api = {
   login: (body: { email: string; password: string }) =>
     request<AuthResponse>("/api/auth/login", { method: "POST", body: JSON.stringify(body) }),
 
-  me: () => request<{ user: User }>("/api/auth/me"),
+  /**
+   * Current user. The server slides the session by returning a fresh token once
+   * the current one is past halfway through its 24h life, so an active user is
+   * never signed out despite the short TTL.
+   */
+  me: async () => {
+    const res = await request<{ user: User; token?: string }>("/api/auth/me");
+    if (res.token) setToken(res.token);
+    return res;
+  },
+
+  /**
+   * Revokes the token server-side (bumps token_version) — clearing localStorage
+   * alone left it valid until expiry.
+   */
+  logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
 
   dashboardSummary: () =>
     request<{
@@ -153,10 +208,15 @@ export const api = {
     body: JSON.stringify(body),
   }),
 
-  payRecurring: (id: number) =>
+  /**
+   * Mark a bill paid. `expectedNextDue` is the due date the UI is showing; the
+   * server rejects the call if it has already moved on, so a double-tap cannot
+   * book the same bill twice.
+   */
+  payRecurring: (id: number, expectedNextDue?: string) =>
     request<{ recurring: Recurring; paid: { amount: number; occurred_on: string } }>(
       `/api/recurring/${id}/pay`,
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({ expected_next_due: expectedNextDue }) },
     ),
 
   updateRecurring: (id: number, body: Partial<{ active: boolean; next_due: string }>) =>
@@ -202,10 +262,17 @@ export const api = {
     start_date?: string;
   }) => request<{ loan: Loan }>("/api/loans", { method: "POST", body: JSON.stringify(body) }),
 
-  payLoan: (id: number, logTransaction = true) =>
-    request<{ loan: Loan; payment: LoanPayment }>(`/api/loans/${id}/pay`, {
+  /**
+   * Record an EMI. `idempotencyKey` identifies the payment *intent*, so a
+   * double-tap or a retry after a dropped connection books one payment, not two.
+   */
+  payLoan: (id: number, idempotencyKey: string, logTransaction = true) =>
+    request<{ loan: Loan; payment: LoanPayment; replayed?: boolean }>(`/api/loans/${id}/pay`, {
       method: "POST",
-      body: JSON.stringify({ log_transaction: logTransaction }),
+      body: JSON.stringify({
+        log_transaction: logTransaction,
+        idempotency_key: idempotencyKey,
+      }),
     }),
 
   changeLoanRate: (id: number, annual_rate: number) =>
@@ -251,6 +318,8 @@ export const api = {
     view?: "today" | "inbox" | "upcoming";
     label_id?: number;
     today?: string;
+    limit?: number;
+    offset?: number;
   }) => {
     const q = new URLSearchParams();
     if (params.space_id != null) q.set("space_id", String(params.space_id));
@@ -258,6 +327,8 @@ export const api = {
     if (params.view) q.set("view", params.view);
     if (params.label_id != null) q.set("label_id", String(params.label_id));
     if (params.today) q.set("today", params.today);
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.offset != null) q.set("offset", String(params.offset));
     return request<{ tasks: Task[] }>(`/api/tasks?${q.toString()}`);
   },
   getTask: (id: number) =>

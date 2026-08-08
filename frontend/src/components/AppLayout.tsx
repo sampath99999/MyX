@@ -85,9 +85,46 @@ export default function AppLayout() {
         </div>
       </aside>
 
-      {/* ---------- Routed content (scrolls independently) ---------- */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <Outlet />
+      {/* ---------- Routed content + mobile tab bar ---------- */}
+      <div className="flex flex-1 min-w-0 flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <Outlet />
+        </div>
+
+        {/*
+          The sidebar above is `hidden md:flex`, which left phones with no way to
+          move between modules at all — each module's own bar only ever showed
+          its own sub-navigation. This is the global nav for that breakpoint.
+          Rendered as a flex sibling rather than `fixed` so it can never overlap
+          page content, and padded for the iOS home indicator.
+        */}
+        <nav
+          className="flex shrink-0 items-stretch border-t border-border/50 glass md:hidden"
+          style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+          aria-label="Main"
+        >
+          {nav
+            .filter((item) => item.ready)
+            .map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
+                    isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <item.icon className="h-5 w-5" strokeWidth={isActive ? 2.4 : 2} />
+                    {item.label}
+                  </>
+                )}
+              </NavLink>
+            ))}
+        </nav>
       </div>
     </div>
   );

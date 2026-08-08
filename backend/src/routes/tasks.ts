@@ -46,40 +46,63 @@ function baseTask(t: TaskRow) {
   };
 }
 
-/** Attach labels + subtask counts to a set of task rows (2 extra queries total). */
+/**
+ * D1 rejects a query with more than 100 bound parameters, and enrich() binds one
+ * per task id. Chunking below that keeps the Tasks views working at any list
+ * size instead of failing outright once a user passes 100 tasks.
+ */
+export const ENRICH_CHUNK_SIZE = 90;
+
+export function chunk<T>(items: T[], size: number): T[][] {
+  if (size < 1) throw new Error("chunk size must be >= 1");
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/** Attach labels + subtask counts to a set of task rows (2 queries per chunk). */
 async function enrich(db: D1Database, rows: TaskRow[]) {
   if (rows.length === 0) return [];
-  const ids = rows.map((r) => r.id);
-  const placeholders = ids.map(() => "?").join(",");
-
-  const [labelsRes, subRes] = await Promise.all([
-    db
-      .prepare(
-        `SELECT tl.task_id, l.id, l.name, l.color
-         FROM task_labels tl JOIN labels l ON l.id = tl.label_id
-         WHERE tl.task_id IN (${placeholders})`,
-      )
-      .bind(...ids)
-      .all<{ task_id: number; id: number; name: string; color: string }>(),
-    db
-      .prepare(
-        `SELECT task_id, COUNT(*) AS total, SUM(done) AS done
-         FROM subtasks WHERE task_id IN (${placeholders}) GROUP BY task_id`,
-      )
-      .bind(...ids)
-      .all<{ task_id: number; total: number; done: number }>(),
-  ]);
 
   const labelMap = new Map<number, LabelLite[]>();
-  for (const r of labelsRes.results ?? []) {
-    const arr = labelMap.get(r.task_id) ?? [];
-    arr.push({ id: r.id, name: r.name, color: r.color });
-    labelMap.set(r.task_id, arr);
-  }
   const subMap = new Map<number, { total: number; done: number }>();
-  for (const r of subRes.results ?? []) {
-    subMap.set(r.task_id, { total: r.total, done: r.done ?? 0 });
-  }
+
+  const batches = chunk(
+    rows.map((r) => r.id),
+    ENRICH_CHUNK_SIZE,
+  );
+
+  await Promise.all(
+    batches.map(async (ids) => {
+      const placeholders = ids.map(() => "?").join(",");
+      const [labelsRes, subRes] = await Promise.all([
+        db
+          .prepare(
+            `SELECT tl.task_id, l.id, l.name, l.color
+             FROM task_labels tl JOIN labels l ON l.id = tl.label_id
+             WHERE tl.task_id IN (${placeholders})`,
+          )
+          .bind(...ids)
+          .all<{ task_id: number; id: number; name: string; color: string }>(),
+        db
+          .prepare(
+            `SELECT task_id, COUNT(*) AS total, SUM(done) AS done
+             FROM subtasks WHERE task_id IN (${placeholders}) GROUP BY task_id`,
+          )
+          .bind(...ids)
+          .all<{ task_id: number; total: number; done: number }>(),
+      ]);
+
+      for (const r of labelsRes.results ?? []) {
+        const arr = labelMap.get(r.task_id) ?? [];
+        arr.push({ id: r.id, name: r.name, color: r.color });
+        labelMap.set(r.task_id, arr);
+      }
+      for (const r of subRes.results ?? []) {
+        subMap.set(r.task_id, { total: r.total, done: r.done ?? 0 });
+      }
+    }),
+  );
 
   return rows.map((t) => ({
     ...baseTask(t),
@@ -93,28 +116,46 @@ function today(c: { req: { query: (k: string) => string | undefined } }): string
   return q && dateRe.test(q) ? q : new Date().toISOString().slice(0, 10);
 }
 
-/** GET /api/tasks?space_id=&project_id=&view=today|inbox|upcoming&label_id=&today= */
+/** Parse an integer query param, rejecting junk instead of binding NaN to D1. */
+function intQuery(raw: string | undefined, name: string): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n)) throw new HTTPException(400, { message: `Invalid ${name}` });
+  return n;
+}
+
+/** Page size for the task list. Bounded so enrich() and the payload stay sane. */
+const DEFAULT_TASK_LIMIT = 200;
+const MAX_TASK_LIMIT = 500;
+
+/** GET /api/tasks?space_id=&project_id=&view=today|inbox|upcoming&label_id=&today=&limit=&offset= */
 tasks.get("/", async (c) => {
   const user = c.get("user");
-  const spaceId = c.req.query("space_id");
-  const projectId = c.req.query("project_id");
-  const labelId = c.req.query("label_id");
+  const spaceId = intQuery(c.req.query("space_id"), "space_id");
+  const projectId = intQuery(c.req.query("project_id"), "project_id");
+  const labelId = intQuery(c.req.query("label_id"), "label_id");
   const view = c.req.query("view");
+
+  const limit = Math.min(
+    Math.max(intQuery(c.req.query("limit"), "limit") ?? DEFAULT_TASK_LIMIT, 1),
+    MAX_TASK_LIMIT,
+  );
+  const offset = Math.max(intQuery(c.req.query("offset"), "offset") ?? 0, 0);
 
   const where: string[] = ["t.user_id = ?"];
   const binds: unknown[] = [user.sub];
   let join = "";
 
-  if (spaceId) {
+  if (spaceId != null) {
     where.push("t.space_id = ?");
-    binds.push(Number(spaceId));
+    binds.push(spaceId);
   }
 
-  if (labelId) {
+  if (labelId != null) {
     join = "JOIN task_labels tl ON tl.task_id = t.id";
     where.push("tl.label_id = ?");
     where.push("t.status = 'open'");
-    binds.push(Number(labelId));
+    binds.push(labelId);
   } else if (view === "today") {
     where.push("t.status = 'open'");
     where.push("t.due_date IS NOT NULL AND t.due_date <= ?");
@@ -126,9 +167,9 @@ tasks.get("/", async (c) => {
   } else if (view === "inbox") {
     where.push("t.status = 'open'");
     where.push("t.project_id IS NULL");
-  } else if (projectId) {
+  } else if (projectId != null) {
     where.push("t.project_id = ?");
-    binds.push(Number(projectId));
+    binds.push(projectId);
   } else {
     where.push("t.status = 'open'");
   }
@@ -138,10 +179,12 @@ tasks.get("/", async (c) => {
       ? "t.due_date ASC, t.priority ASC, t.id DESC"
       : "t.status ASC, t.position ASC, t.priority ASC, (t.due_date IS NULL) ASC, t.due_date ASC, t.id DESC";
 
+  // LIMIT is not optional here: without it the row count feeds straight into
+  // enrich()'s bound-parameter count and the whole module 500s past ~100 tasks.
   const { results } = await c.env.DB.prepare(
-    `SELECT t.* FROM tasks t ${join} WHERE ${where.join(" AND ")} ORDER BY ${order}`,
+    `SELECT t.* FROM tasks t ${join} WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ? OFFSET ?`,
   )
-    .bind(...binds)
+    .bind(...binds, limit, offset)
     .all<TaskRow>();
 
   return c.json({ tasks: await enrich(c.env.DB, results ?? []) });

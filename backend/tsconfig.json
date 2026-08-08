@@ -13,5 +13,9 @@
     "verbatimModuleSyntax": false,
     "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts"]
+  // Worker code only. Tests and their helpers use Node APIs that must never be
+  // reachable from code that ships to the edge, so they typecheck separately
+  // via tsconfig.test.json.
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/test-support/**"]
 }

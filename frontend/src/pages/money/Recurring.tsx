@@ -50,10 +50,13 @@ export default function Recurring() {
 
   const { loading, error, reload } = useAuthenticatedLoad(load);
 
-  async function pay(id: number) {
-    setBusyId(id);
+  async function pay(r: Recurring) {
+    setBusyId(r.id);
     try {
-      await api.payRecurring(id);
+      // Send the due date the UI is showing. If a previous tap already booked
+      // this bill the server will have rolled next_due forward and rejects the
+      // duplicate instead of charging twice.
+      await api.payRecurring(r.id, r.next_due);
       await reload();
     } finally {
       setBusyId(null);
@@ -224,7 +227,7 @@ export default function Recurring() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
-                    <Button size="sm" onClick={() => pay(r.id)} disabled={busyId === r.id}>
+                    <Button size="sm" onClick={() => pay(r)} disabled={busyId === r.id}>
                       {busyId === r.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, clearToken, getToken, setToken, type User } from "./api";
+import { api, clearToken, getToken, setToken, UNAUTHORIZED_EVENT, type User } from "./api";
 
 interface AuthState {
   user: User | null;
@@ -38,6 +38,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Any request rejected with 401 means the token expired or was revoked
+  // elsewhere. Drop the user so <Protected> routes fall through to /login.
+  useEffect(() => {
+    const onUnauthorized = () => setUser(null);
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
+
   async function login(email: string, password: string) {
     const res = await api.login({ email, password });
     setToken(res.token);
@@ -51,6 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function logout() {
+    // Revoke server-side first so the token is dead everywhere, not just in this
+    // browser. Clearing local state does not wait on the network: if the request
+    // fails the user is still signed out here, and the token expires within 24h.
+    api.logout().catch(() => {});
     clearToken();
     setUser(null);
   }

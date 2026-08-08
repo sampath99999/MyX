@@ -13,7 +13,8 @@
     "db:migrate": "npm --prefix backend run db:migrate",
     "deploy:api": "npm --prefix backend run deploy",
     "deploy:web": "npm --prefix frontend run deploy",
-    "deploy": "npm run deploy:api && npm run deploy:web"
+    "deploy": "npm run deploy:api && npm run deploy:web",
+    "test": "npm --prefix backend run test && npm --prefix frontend run test"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
