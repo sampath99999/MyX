@@ -18,8 +18,10 @@ import noteRoutes from "./routes/notes";
 import checklistRoutes from "./routes/checklists";
 import memoryRoutes from "./routes/memories";
 import { requireAuth } from "./middleware";
+import { apiRateLimit } from "./lib/apilimit";
+import { runDailyMaintenance } from "./lib/usage";
 import { isAllowedOrigin } from "./lib/origins";
-import type { AppBindings } from "./types";
+import type { AppBindings, Env } from "./types";
 
 const app = new Hono<AppBindings>();
 
@@ -34,6 +36,10 @@ app.use(
     credentials: true,
   }),
 );
+
+// Flood protection in front of everything under /api. Health stays outside it
+// so an uptime check can never be throttled.
+app.use("/api/*", apiRateLimit);
 
 app.get("/", (c) => c.json({ name: c.env.APP_NAME, status: "ok" }));
 app.get("/api/health", (c) => c.json({ status: "ok", time: new Date().toISOString() }));
@@ -55,7 +61,7 @@ app.route("/api/notes", noteRoutes);
 app.route("/api/checklists", checklistRoutes);
 app.route("/api/memories", memoryRoutes);
 
-// Dashboard rollup. Money numbers are real; other modules are placeholders for now.
+// Dashboard rollup across every module.
 app.get("/api/dashboard/summary", requireAuth, async (c) => {
   const user = c.get("user");
   const monthPrefix = new Date().toISOString().slice(0, 7);
@@ -70,6 +76,21 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
     .bind(`${monthPrefix}%`, user.sub)
     .first<{ income: number; expense: number; month_expense: number }>();
 
+  /*
+    These three were hardcoded to 0 long after Tasks, Notes and Checklists
+    shipped, so the first screen of the app quietly reported nothing existed.
+    One round trip for all of them — three COUNTs over indexed user_id columns
+    is cheaper than three separate D1 calls from the edge.
+  */
+  const counts = await c.env.DB.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM tasks      WHERE user_id = ?1 AND status = 'open') AS open_tasks,
+       (SELECT COUNT(*) FROM notes      WHERE user_id = ?1 AND archived = 0)    AS notes,
+       (SELECT COUNT(*) FROM checklists WHERE user_id = ?1)                     AS checklists`,
+  )
+    .bind(user.sub)
+    .first<{ open_tasks: number; notes: number; checklists: number }>();
+
   const balance = ((money?.income ?? 0) - (money?.expense ?? 0)) / 100;
   const monthSpend = (money?.month_expense ?? 0) / 100;
 
@@ -78,10 +99,9 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
     stats: {
       balance,
       monthSpend,
-      // Real numbers land as each module ships.
-      openTasks: 0,
-      notes: 0,
-      checklists: 0,
+      openTasks: counts?.open_tasks ?? 0,
+      notes: counts?.notes ?? 0,
+      checklists: counts?.checklists ?? 0,
     },
   });
 });
@@ -97,4 +117,18 @@ app.onError((err, c) => {
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 
-export default app;
+/*
+  Exporting the Hono app directly leaves no room for a scheduled handler, so the
+  Worker exports an object: fetch stays exactly as it was, and scheduled runs the
+  daily sweep + quota report (see lib/usage.ts and the cron in wrangler.jsonc).
+*/
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(
+      runDailyMaintenance(env).catch((err) => {
+        console.error("[usage] daily maintenance failed:", err);
+      }),
+    );
+  },
+};

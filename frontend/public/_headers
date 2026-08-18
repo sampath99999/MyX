@@ -4,13 +4,13 @@
 # The CSP is strict rather than nominal: Vite emits no inline scripts, so
 # script-src needs no 'unsafe-inline' escape hatch and an injected <script> tag
 # simply will not run. style-src does allow inline, because React style={{...}}
-# props become style attributes; the Google Fonts host is allowed for the same
-# reason it appears in the HTML. connect-src is pinned to the Worker API, so
+# props become style attributes. Inter is self-hosted, so no external font or
+# style host is allowed at all. connect-src is pinned to the Worker API, so
 # exfiltration to another host is blocked even if something hostile reaches the
 # page.
 /*
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://myx-api.samchitech.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://myx-api.samchitech.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
   X-Content-Type-Options: nosniff

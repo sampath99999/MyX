@@ -4,9 +4,27 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-01-09",
   "compatibility_flags": ["nodejs_compat"],
+  // Daily at 03:15 UTC: sweep spent reset tokens and log D1 usage against the
+  // free-tier ceiling. See src/lib/usage.ts.
+  "triggers": { "crons": ["15 3 * * *"] },
+
   "observability": {
     "enabled": true
   },
+  // Transactional email (password reset). Requires the domain to be onboarded
+  // first: `npx wrangler email sending enable samchitech.com`. Until then the
+  // mailer logs the message instead of failing the request — see lib/email.ts.
+  "send_email": [{ "name": "EMAIL" }],
+
+  // Flood protection for /api/*. Free, and unlike the D1 limiter it costs no
+  // database writes — see src/lib/apilimit.ts for why both exist.
+  "ratelimits": [
+    {
+      "name": "API_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 300, "period": 60 }
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
@@ -21,6 +39,8 @@
     "APP_NAME": "MyX",
     // Public signups are open. Set to anything else to close registration to
     // everyone except the very first account (see routes/auth.ts).
-    "REGISTRATION_OPEN": "true"
+    "REGISTRATION_OPEN": "true",
+    "APP_URL": "https://myx.samchitech.com",
+    "EMAIL_FROM": "noreply@samchitech.com"
   }
 }

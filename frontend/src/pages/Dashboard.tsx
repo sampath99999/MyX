@@ -62,15 +62,17 @@ export default function Dashboard() {
       label: "Open Tasks",
       value: summary ? summary.stats.openTasks : "—",
       icon: CheckCircle2,
-      hint: "Coming soon",
+      hint: "Still to do",
       accent: "text-sky-400",
+      to: "/tasks",
     },
     {
       label: "Checklists",
       value: summary ? summary.stats.checklists : "—",
       icon: ListChecks,
-      hint: "Coming soon",
+      hint: "Reusable routines",
       accent: "text-violet-400",
+      to: "/checklists",
     },
   ];
 

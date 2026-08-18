@@ -7,6 +7,7 @@ import {
   StickyNote,
   Brain,
   ListChecks,
+  Settings,
   LogOut,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -19,6 +20,10 @@ const nav = [
   { to: "/memories", label: "Memories", icon: Brain, ready: true },
   { to: "/checklists", label: "Checklists", icon: ListChecks, ready: true },
 ];
+
+// Kept out of `nav` so it does not take a slot in the mobile tab bar, which is
+// already carrying six modules.
+const settingsItem = { to: "/settings", label: "Settings", icon: Settings };
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
@@ -80,6 +85,13 @@ export default function AppLayout() {
               <div className="truncate text-sm font-medium">{user?.name}</div>
               <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
             </div>
+            <NavLink
+              to={settingsItem.to}
+              title="Settings"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <settingsItem.icon className="h-4 w-4" />
+            </NavLink>
             <button
               onClick={logout}
               title="Sign out"

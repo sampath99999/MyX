@@ -115,6 +115,23 @@ export const api = {
    */
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
 
+  /** Always resolves the same way whether or not the address has an account. */
+  forgotPassword: (body: { email: string }) =>
+    request<{ message: string }>("/api/auth/forgot", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  resetPassword: (body: { token: string; password: string }) =>
+    request<{ ok: true }>("/api/auth/reset", { method: "POST", body: JSON.stringify(body) }),
+
+  /** Irreversible. The server re-checks the password before doing anything. */
+  deleteAccount: (body: { password: string }) =>
+    request<{ ok: true }>("/api/auth/account", {
+      method: "DELETE",
+      body: JSON.stringify(body),
+    }),
+
   dashboardSummary: () =>
     request<{
       greeting: string;

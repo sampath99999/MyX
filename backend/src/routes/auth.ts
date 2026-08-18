@@ -18,6 +18,7 @@ import {
   LOGIN_EMAIL_RULE,
   REGISTER_IP_RULE,
 } from "../lib/ratelimit";
+import { sendEmail, passwordResetEmail } from "../lib/email";
 import { requireAuth } from "../middleware";
 import type { AppBindings } from "../types";
 
@@ -201,6 +202,143 @@ auth.post("/logout", requireAuth, async (c) => {
   await c.env.DB.prepare("UPDATE users SET token_version = token_version + 1 WHERE id = ?")
     .bind(payload.sub)
     .run();
+  return c.json({ ok: true });
+});
+
+/* ------------------------------------------------------------------ *
+ * Password reset
+ * ------------------------------------------------------------------ */
+
+const RESET_TTL_SECONDS = 30 * 60;
+/** Per-IP cap on reset requests — the send path is free to the attacker. */
+const FORGOT_IP_RULE = { limit: 5, windowSeconds: 3600 };
+
+/** SHA-256 hex. Only the digest of a reset token is ever stored. */
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * POST /api/auth/forgot — email a reset link.
+ *
+ * Answers 202 whether or not the address exists. Anything else turns this into
+ * a free membership oracle: "no account with that email" tells a stranger which
+ * of their leaked-credential addresses are worth attacking. The response is also
+ * identical when the mail transport is unconfigured or fails, because none of
+ * that is the requester's business either.
+ */
+auth.post("/forgot", async (c) => {
+  const ip = clientIp(c.req.raw.headers);
+  const ipCheck = await consumeAttempt(c.env.DB, `forgot:ip:${ip}`, FORGOT_IP_RULE);
+  if (!ipCheck.allowed) tooMany(ipCheck.retryAfter);
+
+  const body = await c.req.json().catch(() => null);
+  const email = String(body?.email ?? "").trim().toLowerCase();
+  const accepted = { message: "If that address has an account, a reset link is on its way." };
+  if (!emailRe.test(email)) return c.json(accepted, 202);
+
+  const user = await c.env.DB.prepare("SELECT id, email FROM users WHERE email = ?")
+    .bind(email)
+    .first<{ id: number; email: string }>();
+  if (!user) return c.json(accepted, 202);
+
+  // 32 random bytes, base64url. The plaintext leaves this function only inside
+  // the email body; the database sees the digest.
+  const raw = crypto.getRandomValues(new Uint8Array(32));
+  const token = btoa(String.fromCharCode(...raw)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const now = Math.floor(Date.now() / 1000);
+
+  await c.env.DB.prepare(
+    "INSERT INTO password_resets (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+  )
+    .bind(await sha256Hex(token), user.id, now + RESET_TTL_SECONDS, now)
+    .run();
+
+  const base = (c.env.APP_URL ?? "https://myx.samchitech.com").replace(/\/$/, "");
+  const link = `${base}/reset?token=${token}`;
+  await sendEmail(c.env, { to: user.email, ...passwordResetEmail(link, RESET_TTL_SECONDS / 60) });
+
+  return c.json(accepted, 202);
+});
+
+/**
+ * POST /api/auth/reset — redeem a link and set a new password.
+ *
+ * Marks the row used inside the same statement that checks it, so two parallel
+ * submissions of one link cannot both succeed. Also bumps token_version: whoever
+ * triggered the reset may have been locked out by someone holding a live
+ * session, and this strands every existing token for the account.
+ */
+auth.post("/reset", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const token = String(body?.token ?? "");
+  const password = String(body?.password ?? "");
+
+  const invalid = () => {
+    throw new HTTPException(400, { message: "That reset link is invalid or has expired." });
+  };
+
+  if (!token) invalid();
+  if (password.length < MIN_PASSWORD_LENGTH)
+    throw new HTTPException(400, {
+      message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+    });
+  if (password.length > MAX_PASSWORD_LENGTH)
+    throw new HTTPException(400, { message: "Password is too long" });
+
+  const now = Math.floor(Date.now() / 1000);
+  const claimed = await c.env.DB.prepare(
+    `UPDATE password_resets SET used_at = ?1
+      WHERE token_hash = ?2 AND used_at IS NULL AND expires_at > ?1
+      RETURNING user_id`,
+  )
+    .bind(now, await sha256Hex(token))
+    .first<{ user_id: number }>();
+  if (!claimed) invalid();
+
+  await c.env.DB.prepare(
+    "UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?",
+  )
+    .bind(await hashPassword(password), claimed!.user_id)
+    .run();
+
+  // Any other outstanding link for this account is now meaningless.
+  await c.env.DB.prepare(
+    "UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+  )
+    .bind(now, claimed!.user_id)
+    .run();
+
+  // A reset is a strong signal the account was in trouble, so it does not hand
+  // back a session — the new password has to be used.
+  return c.json({ ok: true });
+});
+
+/**
+ * DELETE /api/auth/account — erase the account and everything in it.
+ *
+ * Requires the current password: a stolen token should not be enough to destroy
+ * someone's records. Every table's user_id carries ON DELETE CASCADE, so this
+ * one statement removes the transactions, tasks, notes, checklists and the rest.
+ */
+auth.delete("/account", requireAuth, async (c) => {
+  const payload = c.get("user");
+  const body = await c.req.json().catch(() => null);
+  const password = String(body?.password ?? "");
+
+  const user = await c.env.DB.prepare("SELECT id, password_hash FROM users WHERE id = ?")
+    .bind(payload.sub)
+    .first<{ id: number; password_hash: string }>();
+  if (!user) throw new HTTPException(404, { message: "Account not found" });
+
+  const ok =
+    password.length > 0 &&
+    password.length <= MAX_PASSWORD_LENGTH &&
+    (await verifyPassword(password, user.password_hash));
+  if (!ok) throw new HTTPException(403, { message: "Password is incorrect" });
+
+  await c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
   return c.json({ ok: true });
 });
 

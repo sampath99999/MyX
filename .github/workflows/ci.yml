@@ -1,0 +1,50 @@
+name: CI
+
+# The repo had 121 tests and nothing running them. This gate is the point of
+# having written them: a push that breaks the loan maths, the XSS sanitiser or
+# the auth gates fails here instead of on the deployed site.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (tests + typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      # Backend tests run against real SQLite through node:sqlite, so no
+      # database service is needed — the migrations are applied in-process.
+      - run: npm ci --prefix backend
+      - run: npm --prefix backend run typecheck
+      - run: npm --prefix backend test
+
+  frontend:
+    name: Frontend (tests + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefix frontend
+      - run: npm --prefix frontend test
+      # `build` also runs tsc and the landing-page prerender, so a broken type
+      # or a prerender that silently stops emitting markup is caught here.
+      - run: npm --prefix frontend run build
+      - name: Assert the landing page was prerendered
+        run: |
+          grep -q "Six things you were using six apps for" frontend/dist/index.html \
+            || { echo "::error::index.html shipped without prerendered content"; exit 1; }

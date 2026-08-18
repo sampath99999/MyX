@@ -16,7 +16,11 @@ import Landing from "@/pages/Landing";
 
 const Login = lazy(() => import("@/pages/Login"));
 const Privacy = lazy(() => import("@/pages/Privacy"));
+const Terms = lazy(() => import("@/pages/Terms"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
+const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
+const Settings = lazy(() => import("@/pages/Settings"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const MoneyLayout = lazy(() => import("@/pages/money/MoneyLayout"));
 const MoneyOverview = lazy(() => import("@/pages/money/MoneyOverview"));
@@ -76,6 +80,18 @@ export function AppRoutes() {
         {/* Public, indexable routes — the only ones a crawler ever sees. */}
         <Route path="/" element={<Landing />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+
+        {/* Reachable while signed out — a locked-out user has no session. */}
+        <Route
+          path="/forgot"
+          element={
+            <PublicOnly>
+              <ForgotPassword />
+            </PublicOnly>
+          }
+        />
+        <Route path="/reset" element={<ResetPassword />} />
 
         <Route
           path="/login"
@@ -116,6 +132,7 @@ export function AppRoutes() {
           <Route path="/checklists" element={<ChecklistsList />} />
           <Route path="/checklists/:id" element={<ChecklistDetail />} />
           <Route path="/memories" element={<MemoriesList />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Wallet,
   CheckCircle2,
@@ -31,6 +31,8 @@ export default function Login() {
   // The landing page's "Get started free" links here with ?mode=register, so
   // the visitor lands on the sign-up form rather than having to find the toggle.
   const [searchParams] = useSearchParams();
+  // Set by ResetPassword after a successful reset, so the user knows it worked.
+  const justReset = searchParams.get("reset") === "1";
   const [mode, setMode] = useState<"login" | "register">(
     searchParams.get("mode") === "register" ? "register" : "login",
   );
@@ -148,7 +150,14 @@ export default function Login() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                {mode === "login" && (
+                  <Link to="/forgot" className="text-xs text-muted-foreground hover:text-foreground">
+                    Forgot?
+                  </Link>
+                )}
+              </div>
               <Input
                 id="password"
                 type="password"
@@ -163,6 +172,12 @@ export default function Login() {
                 <p className="text-xs text-muted-foreground">At least 8 characters.</p>
               )}
             </div>
+
+            {justReset && !error && (
+              <div className="rounded-md border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm">
+                Password updated. Sign in with your new one.
+              </div>
+            )}
 
             {error && (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive">

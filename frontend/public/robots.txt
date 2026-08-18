@@ -4,6 +4,7 @@
 User-agent: *
 Allow: /$
 Allow: /privacy
+Allow: /terms
 Disallow: /dashboard
 Disallow: /money
 Disallow: /tasks
