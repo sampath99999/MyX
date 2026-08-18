@@ -1,3 +1,20 @@
+# Security headers. Cloudflare Pages sends almost none by default — before this
+# the only ones present were X-Content-Type-Options and Referrer-Policy.
+#
+# The CSP is strict rather than nominal: Vite emits no inline scripts, so
+# script-src needs no 'unsafe-inline' escape hatch and an injected <script> tag
+# simply will not run. style-src does allow inline, because React style={{...}}
+# props become style attributes; the Google Fonts host is allowed for the same
+# reason it appears in the HTML. connect-src is pinned to the Worker API, so
+# exfiltration to another host is blocked even if something hostile reaches the
+# page.
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://myx-api.samchitech.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
+  X-Content-Type-Options: nosniff
+
 # The service worker must never be served from a CDN or browser cache — a stale
 # sw.js pins every installed device to the old app shell indefinitely.
 /sw.js

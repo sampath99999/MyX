@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { AppRoutes } from "@/App";
 
 /*
@@ -24,11 +25,13 @@ import { AppRoutes } from "@/App";
 export function renderLanding(): string {
   return renderToString(
     <StrictMode>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/"]}>
-          <AppRoutes />
-        </MemoryRouter>
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <MemoryRouter initialEntries={["/"]}>
+            <AppRoutes />
+          </MemoryRouter>
+        </AuthProvider>
+      </ErrorBoundary>
     </StrictMode>,
   );
 }
