@@ -83,6 +83,8 @@ export interface User {
   id: number;
   email: string;
   name: string;
+  /** Absent on responses from before verification shipped; treated as verified. */
+  email_verified?: boolean;
   created_at?: string;
 }
 
@@ -114,6 +116,18 @@ export const api = {
    * alone left it valid until expiry.
    */
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
+
+  verifyEmail: (body: { code: string }) =>
+    request<{ ok: true; email_verified: true }>("/api/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** Issues a fresh code and invalidates the previous one. */
+  resendVerification: () =>
+    request<{ ok: true; email_verified: boolean }>("/api/auth/verify-email/resend", {
+      method: "POST",
+    }),
 
   /** Always resolves the same way whether or not the address has an account. */
   forgotPassword: (body: { email: string }) =>

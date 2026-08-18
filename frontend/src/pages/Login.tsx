@@ -52,7 +52,8 @@ export default function Login() {
       } else {
         await register(email, name, password);
       }
-      navigate("/dashboard", { replace: true });
+      // A fresh account has a code waiting in its inbox; an existing one does not.
+      navigate(mode === "register" ? "/verify-email" : "/dashboard", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     } finally {

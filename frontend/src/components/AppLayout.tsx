@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import {
   Sparkles,
   LayoutDashboard,
@@ -8,6 +8,7 @@ import {
   Brain,
   ListChecks,
   Settings,
+  MailWarning,
   LogOut,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -105,6 +106,25 @@ export default function AppLayout() {
 
       {/* ---------- Routed content + mobile tab bar ---------- */}
       <div className="flex flex-1 min-w-0 flex-col">
+        {/*
+          Verification is skippable at signup, so this is the way back to it.
+          `email_verified === false` rather than a falsy check: the field is
+          absent on sessions predating verification, and those accounts are not
+          unverified — they are from before the question was asked.
+        */}
+        {user?.email_verified === false && (
+          <Link
+            to="/verify-email"
+            className="flex shrink-0 items-center gap-2 border-b border-amber-400/25 bg-amber-400/10 px-4 py-2.5 text-xs text-amber-200 transition-colors hover:bg-amber-400/15"
+          >
+            <MailWarning className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1">
+              Confirm your email address to secure your account.
+            </span>
+            <span className="shrink-0 font-semibold underline">Enter code</span>
+          </Link>
+        )}
+
         <div className="flex-1 min-h-0 overflow-y-auto">
           <Outlet />
         </div>

@@ -21,6 +21,7 @@ const NotFound = lazy(() => import("@/pages/NotFound"));
 const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Settings = lazy(() => import("@/pages/Settings"));
+const VerifyEmail = lazy(() => import("@/pages/VerifyEmail"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const MoneyLayout = lazy(() => import("@/pages/money/MoneyLayout"));
 const MoneyOverview = lazy(() => import("@/pages/money/MoneyOverview"));
@@ -101,6 +102,15 @@ export function AppRoutes() {
             </PublicOnly>
           }
         />
+        <Route
+          path="/verify-email"
+          element={
+            <Protected>
+              <VerifyEmail />
+            </Protected>
+          }
+        />
+
         <Route
           element={
             <Protected>

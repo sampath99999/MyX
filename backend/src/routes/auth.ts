@@ -19,6 +19,15 @@ import {
   REGISTER_IP_RULE,
 } from "../lib/ratelimit";
 import { sendEmail, passwordResetEmail } from "../lib/email";
+import {
+  generateOtp,
+  hashOtp,
+  normalizeOtp,
+  isWellFormedOtp,
+  verificationEmail,
+  OTP_TTL_SECONDS,
+  OTP_MAX_ATTEMPTS,
+} from "../lib/otp";
 import { requireAuth } from "../middleware";
 import type { AppBindings } from "../types";
 
@@ -30,6 +39,7 @@ interface UserRow {
   name: string;
   password_hash: string;
   token_version: number;
+  email_verified: number;
   created_at: string;
 }
 
@@ -94,9 +104,27 @@ auth.post("/register", async (c) => {
 
   if (!inserted) throw new HTTPException(500, { message: "Failed to create account" });
 
+  /*
+    A code is issued at signup, but the account is usable immediately and the
+    session is handed over as before. Blocking here would mean an outage in the
+    mail path becomes an outage in signup — and worse, it would strand the
+    person who just typed their password with no account and no way back.
+    REQUIRE_VERIFIED_EMAIL is what turns this into a hard gate at login, once
+    the sending domain is known good.
+  */
+  await issueVerificationCode(c.env, inserted.id, inserted.email);
+
   const token = await signToken(inserted, c.env.JWT_SECRET);
   return c.json(
-    { token, user: { id: inserted.id, email: inserted.email, name: inserted.name } },
+    {
+      token,
+      user: {
+        id: inserted.id,
+        email: inserted.email,
+        name: inserted.name,
+        email_verified: false,
+      },
+    },
     201,
   );
 });
@@ -128,7 +156,7 @@ auth.post("/login", async (c) => {
     throw new HTTPException(401, { message: "Invalid email or password" });
 
   const user = await c.env.DB.prepare(
-    "SELECT id, email, name, password_hash, token_version, created_at FROM users WHERE email = ?",
+    "SELECT id, email, name, password_hash, token_version, email_verified, created_at FROM users WHERE email = ?",
   )
     .bind(email)
     .first<UserRow>();
@@ -155,8 +183,27 @@ auth.post("/login", async (c) => {
     await pruneExpired(c.env.DB).catch(() => {});
   }
 
+  /*
+    Off by default. Turning this on before the sending domain is verified would
+    lock out everyone who signed up while the codes were going nowhere, so it is
+    a deliberate switch rather than the default behaviour.
+  */
+  if (c.env.REQUIRE_VERIFIED_EMAIL === "true" && !user.email_verified) {
+    throw new HTTPException(403, {
+      message: "Confirm your email address before signing in. Check your inbox for the code.",
+    });
+  }
+
   const token = await signToken(user, c.env.JWT_SECRET);
-  return c.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+  return c.json({
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      email_verified: Boolean(user.email_verified),
+    },
+  });
 });
 
 /**
@@ -169,7 +216,7 @@ auth.post("/login", async (c) => {
 auth.get("/me", requireAuth, async (c) => {
   const payload = c.get("user");
   const user = await c.env.DB.prepare(
-    "SELECT id, email, name, token_version, created_at FROM users WHERE id = ?",
+    "SELECT id, email, name, token_version, email_verified, created_at FROM users WHERE id = ?",
   )
     .bind(payload.sub)
     .first<{
@@ -177,12 +224,19 @@ auth.get("/me", requireAuth, async (c) => {
       email: string;
       name: string;
       token_version: number;
+      email_verified: number;
       created_at: string;
     }>();
   if (!user) throw new HTTPException(404, { message: "User not found" });
 
   const body: Record<string, unknown> = {
-    user: { id: user.id, email: user.email, name: user.name, created_at: user.created_at },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      email_verified: Boolean(user.email_verified),
+      created_at: user.created_at,
+    },
   };
   if (shouldRenew(payload)) {
     body.token = await signToken(user, c.env.JWT_SECRET);
@@ -340,6 +394,96 @@ auth.delete("/account", requireAuth, async (c) => {
 
   await c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
   return c.json({ ok: true });
+});
+
+/* ------------------------------------------------------------------ *
+ * Email verification
+ * ------------------------------------------------------------------ */
+
+/** Per-user cap on how often a new code can be requested. */
+const RESEND_RULE = { limit: 5, windowSeconds: 3600 };
+
+/**
+ * Create (or replace) this user's code and email it.
+ *
+ * Replacing rather than adding is the point: several live codes would multiply
+ * an attacker's chances by the number outstanding, and the attempt counter has
+ * to reset with the code or a resend would inherit a spent budget.
+ */
+async function issueVerificationCode(env: AppBindings["Bindings"], userId: number, email: string) {
+  const code = generateOtp();
+  const now = Math.floor(Date.now() / 1000);
+
+  await env.DB.prepare(
+    `INSERT INTO email_otps (user_id, code_hash, expires_at, attempts, created_at)
+     VALUES (?1, ?2, ?3, 0, ?4)
+     ON CONFLICT (user_id)
+     DO UPDATE SET code_hash = ?2, expires_at = ?3, attempts = 0, created_at = ?4`,
+  )
+    .bind(userId, await hashOtp(code), now + OTP_TTL_SECONDS, now)
+    .run();
+
+  await sendEmail(env, { to: email, ...verificationEmail(code, OTP_TTL_SECONDS / 60) });
+}
+
+/**
+ * POST /api/auth/verify-email — confirm the address with the emailed code.
+ *
+ * The attempt counter is incremented *before* the code is compared, so a wrong
+ * guess costs the attacker a try whether or not the request completes. Six
+ * digits is only a million possibilities; the cap is what makes that safe.
+ */
+auth.post("/verify-email", requireAuth, async (c) => {
+  const payload = c.get("user");
+  const body = await c.req.json().catch(() => null);
+  const code = normalizeOtp(body?.code);
+
+  const wrong = () => {
+    throw new HTTPException(400, { message: "That code is incorrect or has expired." });
+  };
+  if (!isWellFormedOtp(code)) wrong();
+
+  const now = Math.floor(Date.now() / 1000);
+  const row = await c.env.DB.prepare(
+    `UPDATE email_otps SET attempts = attempts + 1
+      WHERE user_id = ?1 AND expires_at > ?2 AND attempts < ?3
+      RETURNING code_hash`,
+  )
+    .bind(payload.sub, now, OTP_MAX_ATTEMPTS)
+    .first<{ code_hash: string }>();
+
+  // No row means no code, expired, or the guess budget is gone. All the same
+  // message — telling them which one is free information.
+  if (!row) wrong();
+  if (row!.code_hash !== (await hashOtp(code))) wrong();
+
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE users SET email_verified = 1 WHERE id = ?").bind(payload.sub),
+    c.env.DB.prepare("DELETE FROM email_otps WHERE user_id = ?").bind(payload.sub),
+  ]);
+
+  return c.json({ ok: true, email_verified: true });
+});
+
+/** POST /api/auth/verify-email/resend — issue a fresh code, invalidating the old. */
+auth.post("/verify-email/resend", requireAuth, async (c) => {
+  const payload = c.get("user");
+
+  const check = await consumeAttempt(c.env.DB, `verify:user:${payload.sub}`, RESEND_RULE);
+  if (!check.allowed) tooMany(check.retryAfter);
+
+  const user = await c.env.DB.prepare(
+    "SELECT id, email, email_verified FROM users WHERE id = ?",
+  )
+    .bind(payload.sub)
+    .first<{ id: number; email: string; email_verified: number }>();
+  if (!user) throw new HTTPException(404, { message: "Account not found" });
+
+  // Already done — say so plainly rather than sending a pointless email.
+  if (user.email_verified) return c.json({ ok: true, email_verified: true });
+
+  await issueVerificationCode(c.env, user.id, user.email);
+  return c.json({ ok: true, email_verified: false });
 });
 
 export default auth;

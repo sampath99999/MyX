@@ -32,6 +32,12 @@ export interface Env {
   EMAIL_FROM?: string;
   /** Public origin, used to build password-reset links. */
   APP_URL?: string;
+  /**
+   * When "true", an unverified address cannot sign in. Left off until the
+   * sending domain is confirmed working — otherwise it locks out everyone who
+   * signed up while the codes were going nowhere.
+   */
+  REQUIRE_VERIFIED_EMAIL?: string;
 }
 
 // Variables set on the Hono context by middleware.

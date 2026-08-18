@@ -7,6 +7,8 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, name: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Re-read the user from the server — used after email verification flips a flag. */
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -46,6 +48,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
 
+  async function refresh() {
+    try {
+      const { user } = await api.me();
+      setUser(user);
+    } catch {
+      // A failure here is not worth surfacing: the caller is refreshing a flag,
+      // and a 401 has already torn the session down through the api layer.
+    }
+  }
+
   async function login(email: string, password: string) {
     const res = await api.login({ email, password });
     setToken(res.token);
@@ -68,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );
