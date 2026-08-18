@@ -7,6 +7,13 @@ const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const KEY_BITS = 256;
 
+/**
+ * Hashing cost is paid per attempt, so an unbounded password is a cheap way to
+ * burn Worker CPU. Anything past this is rejected before pbkdf2() is called.
+ */
+export const MAX_PASSWORD_LENGTH = 128;
+export const MIN_PASSWORD_LENGTH = 8;
+
 const enc = new TextEncoder();
 
 function toBase64(bytes: Uint8Array): string {
@@ -63,25 +70,43 @@ export interface JwtPayload {
   sub: number; // user id
   email: string;
   name: string;
+  tv: number; // token_version at issue time — see verifyToken callers
+  iat: number;
   exp: number;
   [key: string]: unknown;
 }
 
-const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+/**
+ * Short because a leaked token cannot be un-issued mid-flight. Active users
+ * never see a re-login: GET /api/auth/me hands back a fresh token once a
+ * session is past its halfway mark (see shouldRenew).
+ */
+export const TOKEN_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
 export async function signToken(
-  user: { id: number; email: string; name: string },
+  user: { id: number; email: string; name: string; token_version?: number },
   secret: string,
 ): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
   const payload: JwtPayload = {
     sub: user.id,
     email: user.email,
     name: user.name,
-    exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
+    tv: user.token_version ?? 0,
+    iat: now,
+    exp: now + TOKEN_TTL_SECONDS,
   };
   return sign(payload, secret);
 }
 
 export async function verifyToken(token: string, secret: string): Promise<JwtPayload> {
   return (await verify(token, secret, "HS256")) as JwtPayload;
+}
+
+/** True once a token is more than halfway to expiry, so /me can slide it forward. */
+export function shouldRenew(payload: JwtPayload, now = Math.floor(Date.now() / 1000)): boolean {
+  if (typeof payload.exp !== "number" || typeof payload.iat !== "number") return true;
+  const lifetime = payload.exp - payload.iat;
+  if (lifetime <= 0) return true;
+  return now - payload.iat >= lifetime / 2;
 }

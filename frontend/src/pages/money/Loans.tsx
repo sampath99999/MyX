@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Plus,
   Landmark,
@@ -11,10 +11,17 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import NewLoanDialog from "@/components/NewLoanDialog";
 import LoanDetailsDialog from "@/components/LoanDetailsDialog";
 import LoadError from "@/components/LoadError";
-import { api, formatMoney, type Loan } from "@/lib/api";
+import { api, ApiError, formatMoney, type Loan } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +36,12 @@ function fmtDate(iso: string | null) {
 export default function Loans() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [confirming, setConfirming] = useState<Loan | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  // One key per payment *intent*, minted when the confirm dialog opens. Every
+  // retry of that intent reuses it, so the server can collapse duplicates.
+  const payKey = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     const { loans } = await api.listLoans();
@@ -37,11 +50,27 @@ export default function Loans() {
 
   const { loading, error, reload } = useAuthenticatedLoad(load);
 
-  async function pay(id: number) {
-    setBusyId(id);
+  function askToPay(loan: Loan) {
+    payKey.current = crypto.randomUUID();
+    setPayError(null);
+    setConfirming(loan);
+  }
+
+  async function confirmPay() {
+    const loan = confirming;
+    const key = payKey.current;
+    if (!loan || !key) return;
+    setBusyId(loan.id);
+    setPayError(null);
     try {
-      await api.payLoan(id, true);
+      await api.payLoan(loan.id, key, true);
+      setConfirming(null);
+      payKey.current = null;
       await reload();
+    } catch (err) {
+      // The key is deliberately kept so a retry is treated as the same intent
+      // rather than booking a second EMI.
+      setPayError(err instanceof ApiError ? err.message : "Could not record the payment.");
     } finally {
       setBusyId(null);
     }
@@ -215,7 +244,7 @@ export default function Loans() {
                     }
                   />
                   {!closed && (
-                    <Button size="sm" className="flex-1" onClick={() => pay(l.id)} disabled={busyId === l.id}>
+                    <Button size="sm" className="flex-1" onClick={() => askToPay(l)} disabled={busyId === l.id}>
                       {busyId === l.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
@@ -237,6 +266,104 @@ export default function Loans() {
           })}
         </div>
       )}
+
+      {/*
+        "Pay EMI" writes a payment row, moves the outstanding balance and books a
+        real expense. It used to do all that on a single unguarded tap, so this
+        confirms the exact split first — and the request carries an idempotency
+        key so a double-tap still books one payment.
+      */}
+      <Dialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open && busyId === null) {
+            setConfirming(null);
+            payKey.current = null;
+            setPayError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record this EMI?</DialogTitle>
+            <DialogDescription>
+              {confirming
+                ? `${confirming.name}${confirming.lender ? ` · ${confirming.lender}` : ""}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {confirming && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border/60 bg-background/40 p-4">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-muted-foreground">EMI amount</span>
+                  <span className="text-xl font-bold tracking-tight">
+                    {formatMoney(confirming.emi)}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-1.5 border-t border-border/50 pt-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Interest</span>
+                    <span className="tabular-nums">
+                      {formatMoney(confirming.next_payment.interest)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Principal</span>
+                    <span className="tabular-nums">
+                      {formatMoney(confirming.next_payment.principal)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t border-border/50 pt-1.5 font-medium">
+                    <span>Balance after</span>
+                    <span className="tabular-nums">
+                      {formatMoney(
+                        Math.max(confirming.outstanding - confirming.next_payment.principal, 0),
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                This also logs an expense of {formatMoney(confirming.emi)} under “Loan EMI”.
+              </p>
+
+              {payError && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive">
+                  {payError}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => {
+                    setConfirming(null);
+                    payKey.current = null;
+                    setPayError(null);
+                  }}
+                  disabled={busyId !== null}
+                >
+                  Cancel
+                </Button>
+                <Button className="flex-1" onClick={confirmPay} disabled={busyId !== null}>
+                  {busyId !== null ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CalendarCheck className="h-4 w-4" />
+                      {payError ? "Retry" : "Confirm payment"}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

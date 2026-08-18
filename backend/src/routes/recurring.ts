@@ -32,7 +32,7 @@ function daysInMonth(y: number, m: number): number {
 }
 
 /** Advance a YYYY-MM-DD date by interval periods of the given frequency. */
-function advanceDate(iso: string, frequency: Frequency, interval: number): string {
+export function advanceDate(iso: string, frequency: Frequency, interval: number): string {
   const [y, m, d] = iso.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d));
   if (frequency === "daily") {
@@ -158,12 +158,25 @@ recurring.post("/", async (c) => {
 recurring.post("/:id/pay", async (c) => {
   const user = c.get("user");
   const id = Number(c.req.param("id"));
+  const body = await c.req.json().catch(() => ({}));
   if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
 
   const r = await c.env.DB.prepare("SELECT * FROM recurring WHERE id = ? AND user_id = ?")
     .bind(id, user.sub)
     .first<RecurringRow>();
   if (!r) throw new HTTPException(404, { message: "Recurring item not found" });
+  if (r.active !== 1)
+    throw new HTTPException(400, { message: "This bill is paused — resume it before marking it paid." });
+
+  // Optimistic concurrency instead of an idempotency column: the client tells us
+  // which due date it believes it is paying. Because a successful payment rolls
+  // next_due forward, a double-tap arrives with a stale date and is rejected
+  // rather than booking the same bill twice.
+  const expected = body?.expected_next_due ? String(body.expected_next_due) : null;
+  if (expected && expected !== r.next_due)
+    throw new HTTPException(409, {
+      message: "This bill was already marked paid.",
+    });
 
   const occurredOn = r.next_due;
   const nextDue = advanceDate(r.next_due, r.frequency, r.interval);

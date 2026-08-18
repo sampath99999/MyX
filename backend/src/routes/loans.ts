@@ -177,10 +177,43 @@ loans.post("/:id/pay", async (c) => {
   const logTransaction = body?.log_transaction !== false; // default: also record as an expense
   if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
 
+  // Idempotency: the client sends a key per payment *intent*, so a double-tap,
+  // a retried request, or a flaky connection all resolve to one booked EMI
+  // instead of two. Required — a missing key would silently reopen the bug.
+  const idempotencyKey = body?.idempotency_key ? String(body.idempotency_key).slice(0, 100) : null;
+  if (!idempotencyKey)
+    throw new HTTPException(400, { message: "idempotency_key is required" });
+
   const loan = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
     .bind(id, user.sub)
     .first<LoanRow>();
   if (!loan) throw new HTTPException(404, { message: "Loan not found" });
+
+  // Replay of a key we've already booked: return the original result unchanged
+  // rather than erroring, so a retry looks identical to the first success.
+  const prior = await c.env.DB.prepare(
+    "SELECT * FROM loan_payments WHERE loan_id = ? AND idempotency_key = ?",
+  )
+    .bind(id, idempotencyKey)
+    .first<{
+      amount: number;
+      interest_part: number;
+      principal_part: number;
+      balance_after: number;
+    }>();
+  if (prior) {
+    return c.json({
+      loan: serialize(loan, await paidCountFor(c.env.DB, id)),
+      payment: {
+        amount: toRupees(prior.amount),
+        interest_part: toRupees(prior.interest_part),
+        principal_part: toRupees(prior.principal_part),
+        balance_after: toRupees(prior.balance_after),
+      },
+      replayed: true,
+    });
+  }
+
   if (loan.status === "closed") throw new HTTPException(400, { message: "Loan is already closed" });
 
   const interest = monthlyInterest(loan.outstanding, loan.annual_rate);
@@ -195,9 +228,9 @@ loans.post("/:id/pay", async (c) => {
 
   const stmts = [
     c.env.DB.prepare(
-      `INSERT INTO loan_payments (loan_id, user_id, amount, interest_part, principal_part, balance_after, paid_on)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(id, user.sub, payment, interest, principal, balanceAfter, paidOn),
+      `INSERT INTO loan_payments (loan_id, user_id, amount, interest_part, principal_part, balance_after, paid_on, idempotency_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, user.sub, payment, interest, principal, balanceAfter, paidOn, idempotencyKey),
     c.env.DB.prepare("UPDATE loans SET outstanding = ?, status = ? WHERE id = ? AND user_id = ?").bind(
       balanceAfter,
       nextStatus,
@@ -213,7 +246,38 @@ loans.post("/:id/pay", async (c) => {
       ).bind(user.sub, payment, `${loan.name} EMI`, paidOn),
     );
   }
-  await c.env.DB.batch(stmts);
+
+  // The UNIQUE(loan_id, idempotency_key) index is the real guard: two requests
+  // racing past the SELECT above both reach here, and the second one's INSERT
+  // fails, rolling back the whole batch. Treat that as a replay, not an error.
+  try {
+    await c.env.DB.batch(stmts);
+  } catch (e) {
+    const replay = await c.env.DB.prepare(
+      "SELECT * FROM loan_payments WHERE loan_id = ? AND idempotency_key = ?",
+    )
+      .bind(id, idempotencyKey)
+      .first<{
+        amount: number;
+        interest_part: number;
+        principal_part: number;
+        balance_after: number;
+      }>();
+    if (!replay) throw e;
+    const current = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+      .bind(id, user.sub)
+      .first<LoanRow>();
+    return c.json({
+      loan: serialize(current!, await paidCountFor(c.env.DB, id)),
+      payment: {
+        amount: toRupees(replay.amount),
+        interest_part: toRupees(replay.interest_part),
+        principal_part: toRupees(replay.principal_part),
+        balance_after: toRupees(replay.balance_after),
+      },
+      replayed: true,
+    });
+  }
 
   const updated = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
     .bind(id, user.sub)

@@ -1,0 +1,12 @@
+// Typechecks the test suite, which runs on Node (vitest) rather than in the
+// Workers runtime and therefore needs both sets of globals.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}
