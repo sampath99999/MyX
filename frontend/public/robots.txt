@@ -1,0 +1,15 @@
+# Everything behind /login is private, per-user data. It is already unreachable
+# without a token, but keeping crawlers out of it saves crawl budget and stops
+# the signed-out redirect from being indexed as thin content.
+User-agent: *
+Allow: /$
+Allow: /privacy
+Disallow: /dashboard
+Disallow: /money
+Disallow: /tasks
+Disallow: /notes
+Disallow: /checklists
+Disallow: /memories
+Disallow: /login
+
+Sitemap: https://myx.samchitech.com/sitemap.xml

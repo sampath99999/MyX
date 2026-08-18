@@ -2,8 +2,14 @@ import { describe, it, expect } from "vitest";
 import { isAllowedOrigin } from "./origins";
 
 describe("isAllowedOrigin", () => {
-  it("allows the production Pages site", () => {
+  it("allows the production site and the Pages origin behind it", () => {
+    expect(isAllowedOrigin("https://myx.samchitech.com")).toBe(true);
     expect(isAllowedOrigin("https://myx-app.pages.dev")).toBe(true);
+  });
+
+  it("rejects a lookalike of the custom domain", () => {
+    expect(isAllowedOrigin("https://myx.samchitech.com.evil.com")).toBe(false);
+    expect(isAllowedOrigin("https://evil-myx.samchitech.com")).toBe(false);
   });
 
   it("allows local dev origins", () => {

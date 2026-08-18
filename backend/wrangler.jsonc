@@ -18,6 +18,9 @@
   "vars": {
     // Non-secret defaults. JWT_SECRET is set via `wrangler secret put JWT_SECRET`
     // for production and via .dev.vars for local dev.
-    "APP_NAME": "MyX"
+    "APP_NAME": "MyX",
+    // Public signups are open. Set to anything else to close registration to
+    // everyone except the very first account (see routes/auth.ts).
+    "REGISTRATION_OPEN": "true"
   }
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Wallet,
   CheckCircle2,
@@ -28,7 +28,12 @@ export default function Login() {
   const { login, register } = useAuth();
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState<"login" | "register">("login");
+  // The landing page's "Get started free" links here with ?mode=register, so
+  // the visitor lands on the sign-up form rather than having to find the toggle.
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<"login" | "register">(
+    searchParams.get("mode") === "register" ? "register" : "login",
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,7 +50,7 @@ export default function Login() {
       } else {
         await register(email, name, password);
       }
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     } finally {

@@ -10,6 +10,7 @@
  * the deployed Pages site and local dev, so nothing has to be set to work.
  */
 const DEFAULT_ORIGINS = [
+  "https://myx.samchitech.com",
   "https://myx-app.pages.dev",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
