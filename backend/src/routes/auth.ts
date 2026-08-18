@@ -40,12 +40,27 @@ function tooMany(retryAfter: number): never {
   });
 }
 
-/** POST /api/auth/register — create an account, returns a JWT. */
+/**
+ * POST /api/auth/register — create an account, returns a JWT.
+ *
+ * MyX is single-user. The API is on a public URL, so leaving signup open let
+ * anyone who found it create an account in the owner's database. Registration
+ * now closes by itself as soon as the first account exists: the very first
+ * request bootstraps the owner, and everything after it needs REGISTRATION_OPEN
+ * set explicitly. That keeps a fresh deploy usable without a manual step.
+ */
 auth.post("/register", async (c) => {
   // Rate limit first: registration is unauthenticated and hashes a password.
   const ip = clientIp(c.req.raw.headers);
   const ipCheck = await consumeAttempt(c.env.DB, `register:ip:${ip}`, REGISTER_IP_RULE);
   if (!ipCheck.allowed) tooMany(ipCheck.retryAfter);
+
+  if (c.env.REGISTRATION_OPEN !== "true") {
+    const owner = await c.env.DB.prepare("SELECT 1 AS x FROM users LIMIT 1").first();
+    if (owner) {
+      throw new HTTPException(403, { message: "Registration is closed on this instance." });
+    }
+  }
 
   const body = await c.req.json().catch(() => null);
   const email = String(body?.email ?? "").trim().toLowerCase();

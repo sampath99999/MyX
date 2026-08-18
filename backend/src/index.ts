@@ -18,15 +18,17 @@ import noteRoutes from "./routes/notes";
 import checklistRoutes from "./routes/checklists";
 import memoryRoutes from "./routes/memories";
 import { requireAuth } from "./middleware";
+import { isAllowedOrigin } from "./lib/origins";
 import type { AppBindings } from "./types";
 
 const app = new Hono<AppBindings>();
 
 // CORS — allow the Pages frontend (and localhost during dev) to call the API.
+// Anything else gets no CORS headers back, so the browser blocks the response.
 app.use(
   "*",
   cors({
-    origin: (origin) => origin ?? "*",
+    origin: (origin, c) => (isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS) ? origin : null),
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
