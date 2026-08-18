@@ -1,0 +1,11 @@
+# The service worker must never be served from a CDN or browser cache — a stale
+# sw.js pins every installed device to the old app shell indefinitely.
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.webmanifest
+  Cache-Control: public, max-age=3600
+
+# Vite fingerprints these, so they can be cached permanently.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

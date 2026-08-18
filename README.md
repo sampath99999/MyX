@@ -33,7 +33,13 @@ Single-user (you) today, built so family accounts can be added later.
 - Documents vault, Passwords / secure notes, Shopping lists, Travel planner, Vehicle
 
 > **Built so far:**
-> - ✅ Auth (own `users` table + JWT) + premium login/register
+> - ✅ Auth (own `users` table + JWT) + premium login/register — rate limited,
+>   revocable on logout, 24h sliding sessions
+> - ✅ **PWA** — installable on phone/desktop, offline app shell, maskable icons,
+>   app shortcuts; API traffic is never cached
+> - ✅ **Mobile navigation** — bottom tab bar below `md`, so every module is
+>   reachable on a phone (the sidebar is desktop-only)
+> - ✅ **Tests** — 107 Vitest cases across both packages
 > - ✅ Dashboard shell (real balance + month spend, live from the DB)
 > - ✅ **Money → Overview** — income/expense, current balance, premium add-transaction
 >   flow (hero amount input with amount-in-words, searchable icon category picker)
@@ -89,10 +95,18 @@ Cloudflare D1     ──►  SQLite database  (myx-db)
 
 ### Auth design (own table + JWT)
 - Passwords hashed with **PBKDF2-SHA256** (100k iterations) via Web Crypto — no native deps,
-  works in Workers.
-- Login returns a **JWT** (HS256) signed with `JWT_SECRET`.
+  works in Workers. Input is capped at 128 chars so a huge password can't burn CPU.
+- Login returns a **JWT** (HS256) signed with `JWT_SECRET`, valid for **24h**.
+  `GET /api/auth/me` slides the session past the halfway mark, so active users stay signed in.
 - Frontend stores the token in `localStorage`, sends it as `Authorization: Bearer <token>`.
 - Protected routes verified by Hono middleware.
+- **Revocation:** every token carries a `token_version` matched against `users.token_version`.
+  `POST /api/auth/logout` bumps it, which invalidates that user's outstanding tokens everywhere
+  — logout used to be cosmetic, leaving the JWT usable for its full life.
+- **Rate limiting:** a D1-backed fixed-window limiter (`auth_attempts`) runs *before* any
+  hashing — 20/15min per IP and 5/15min of failures per email on login, 5/hour per IP on
+  register. Blocks both password guessing and PBKDF2 CPU exhaustion.
+- A 401 anywhere in the app tears the session down client-side and routes to `/login`.
 
 ## 4. Database schema (v1)
 
@@ -197,19 +211,42 @@ MyX/
 ## 6. Setup & run (local dev)
 
 ```bash
-# Backend (Worker + local D1) — http://localhost:8787
-cd backend
-npm install
+npm run install:all             # root + backend + frontend deps
 npm run db:migrate:local        # apply migrations to local D1
-npm run dev
+npm run dev                     # API on :8787 and web on :5173 together
+```
 
-# Frontend (Vite) — http://localhost:5173
-cd frontend
-npm install
-npm run dev
+Or one at a time:
+
+```bash
+npm run dev:api                 # Worker + local D1 — http://localhost:8787
+npm run dev:web                 # Vite — http://localhost:5173
 ```
 
 Local frontend calls the local Worker at `http://localhost:8787` (see `frontend/.env`).
+The Worker reads `JWT_SECRET` from `backend/.dev.vars` (gitignored) in local dev — create it
+with any random string:
+
+```bash
+echo "JWT_SECRET=$(openssl rand -hex 32)" > backend/.dev.vars
+```
+
+### Tests
+
+Vitest in both packages; backend tests run against real SQLite (`node:sqlite`) with the
+migrations applied, so schema guarantees are covered too.
+
+```bash
+npm --prefix backend test       # amortization, rate limiting, idempotency, auth
+npm --prefix frontend test      # quick-add parsing, markdown XSS regressions
+```
+
+### PWA
+
+`frontend/public/` holds `manifest.webmanifest`, the icon set and `sw.js`. The service worker
+is **production-only** (`src/lib/pwa.ts` unregisters it in dev so it can't fight Vite's HMR).
+It caches the app shell and hashed assets, and deliberately never touches `/api/*` — that
+traffic is private and authenticated, so it must not land in a browser cache.
 
 ## 7. Live URLs (deployed 🎉)
 
@@ -264,5 +301,4 @@ Money module (building out one sub-feature at a time):
 - Life Admin module (Documents vault, Passwords, Shopping lists, Travel planner, Vehicle)
 - Cross-module dashboard (today Dashboard only shows real Money numbers; other modules
   are placeholders — see `/api/dashboard/summary` in [backend/src/index.ts](backend/src/index.ts))
-- PWA / offline support
 - Reminders / notifications

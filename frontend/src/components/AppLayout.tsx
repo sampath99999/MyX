@@ -25,7 +25,13 @@ export default function AppLayout() {
   const firstName = user?.name?.split(" ")[0] ?? "there";
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    // Installed on iOS the status bar is translucent over the app (see the
+    // apple-mobile-web-app-status-bar-style meta), so the shell has to keep its
+    // own content clear of the notch. Zero in a browser tab and on desktop.
+    <div
+      className="flex h-dvh overflow-hidden"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+    >
       {/* ---------- Sidebar (fixed height, does not scroll with content) ---------- */}
       <aside className="hidden md:flex md:w-64 shrink-0 flex-col glass border-r border-border/50 p-5">
         <div className="flex items-center gap-2.5 px-2 py-2">
