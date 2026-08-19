@@ -221,9 +221,26 @@ loans.post("/:id/pay", async (c) => {
   if (principal > loan.outstanding) principal = loan.outstanding; // final EMI
   const payment = interest + principal;
   const balanceAfter = loan.outstanding - principal;
-  const paidOn = body?.paid_on && dateRe.test(String(body.paid_on))
-    ? String(body.paid_on)
-    : new Date().toISOString().slice(0, 10);
+  /*
+    An EMI is usually recorded after the fact, so the caller picks the date and
+    it becomes the expense's date too — otherwise last month's instalment lands
+    in this month's spending, budgets and charts.
+
+    A malformed or future date is rejected rather than quietly replaced with
+    today: silently mis-dating a financial record is worse than refusing it.
+  */
+  const today = new Date().toISOString().slice(0, 10);
+  let paidOn = today;
+  if (body?.paid_on !== undefined && body?.paid_on !== null) {
+    const requested = String(body.paid_on);
+    if (!dateRe.test(requested)) {
+      throw new HTTPException(400, { message: "paid_on must be a date in YYYY-MM-DD form" });
+    }
+    if (requested > today) {
+      throw new HTTPException(400, { message: "paid_on cannot be in the future" });
+    }
+    paidOn = requested;
+  }
   const nextStatus = balanceAfter <= 0 ? "closed" : "active";
 
   const stmts = [

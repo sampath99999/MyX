@@ -321,12 +321,18 @@ export const api = {
    * Record an EMI. `idempotencyKey` identifies the payment *intent*, so a
    * double-tap or a retry after a dropped connection books one payment, not two.
    */
-  payLoan: (id: number, idempotencyKey: string, logTransaction = true) =>
+  /**
+   * `paidOn` (YYYY-MM-DD) is also the date of the expense this books, so a
+   * payment logged late lands in the month it was actually made rather than
+   * the month it was entered.
+   */
+  payLoan: (id: number, idempotencyKey: string, logTransaction = true, paidOn?: string) =>
     request<{ loan: Loan; payment: LoanPayment; replayed?: boolean }>(`/api/loans/${id}/pay`, {
       method: "POST",
       body: JSON.stringify({
         log_transaction: logTransaction,
         idempotency_key: idempotencyKey,
+        paid_on: paidOn,
       }),
     }),
 

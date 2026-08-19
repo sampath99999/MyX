@@ -33,11 +33,23 @@ function fmtDate(iso: string | null) {
   });
 }
 
+/** Local calendar date, not UTC — "today" must match the user's, not the server's. */
+function todayIso(): string {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
 export default function Loans() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [confirming, setConfirming] = useState<Loan | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
+  /*
+    EMIs get logged days or weeks after they were actually paid. This date is
+    also the expense's date, so leaving it at "today" would put last month's
+    instalment into this month's spending, budgets and cash-flow chart.
+  */
+  const [paidOn, setPaidOn] = useState(todayIso);
 
   // One key per payment *intent*, minted when the confirm dialog opens. Every
   // retry of that intent reuses it, so the server can collapse duplicates.
@@ -53,6 +65,7 @@ export default function Loans() {
   function askToPay(loan: Loan) {
     payKey.current = crypto.randomUUID();
     setPayError(null);
+    setPaidOn(todayIso());
     setConfirming(loan);
   }
 
@@ -63,7 +76,7 @@ export default function Loans() {
     setBusyId(loan.id);
     setPayError(null);
     try {
-      await api.payLoan(loan.id, key, true);
+      await api.payLoan(loan.id, key, true, paidOn);
       setConfirming(null);
       payKey.current = null;
       await reload();
@@ -326,9 +339,30 @@ export default function Loans() {
                 </div>
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                This also logs an expense of {formatMoney(confirming.emi)} under “Loan EMI”.
-              </p>
+              <div>
+                <label htmlFor="paid-on" className="text-sm font-medium">
+                  Paid on
+                </label>
+                <input
+                  id="paid-on"
+                  type="date"
+                  value={paidOn}
+                  max={todayIso()}
+                  onChange={(e) => setPaidOn(e.target.value || todayIso())}
+                  className="mt-1.5 w-full rounded-lg border border-input bg-transparent px-3 py-2.5 outline-none focus:border-ring"
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {paidOn === todayIso()
+                    ? `Logs an expense of ${formatMoney(confirming.emi)} under “Loan EMI”, dated today.`
+                    : `Logs the expense under “Loan EMI”, dated ${new Date(
+                        paidOn + "T00:00:00",
+                      ).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })} — so it counts towards that month's spending and budgets, not this one.`}
+                </p>
+              </div>
 
               {payError && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive">
