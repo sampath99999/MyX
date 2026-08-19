@@ -50,6 +50,72 @@
   --ring: oklch(0.62 0.19 285);
 }
 
+/* ============================================================
+   Light mode.
+
+   Dark stays the default — it is what :root above defines, what the HTML ships
+   with, and what every screen was designed against. This block only says what
+   changes, and it hangs off a class that /theme-init.js puts on <html> before
+   the first paint (see src/lib/theme.tsx).
+
+   Same violet, same structure, inverted ground. Chroma comes down as lightness
+   goes up: a colour that reads as "rich" on near-black reads as "loud" on
+   near-white at the same saturation.
+   ============================================================ */
+.light {
+  --background: oklch(0.985 0.004 285);
+  --foreground: oklch(0.22 0.02 275);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 275);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.02 275);
+
+  /* Darker than the dark-mode violet: the same hue has to carry contrast
+     against white now, not against near-black. */
+  --primary: oklch(0.54 0.2 285);
+  --primary-foreground: oklch(0.99 0 0);
+
+  --secondary: oklch(0.955 0.008 275);
+  --secondary-foreground: oklch(0.28 0.02 275);
+
+  --muted: oklch(0.955 0.008 275);
+  --muted-foreground: oklch(0.47 0.02 275);
+
+  --accent: oklch(0.945 0.018 285);
+  --accent-foreground: oklch(0.25 0.02 275);
+
+  --destructive: oklch(0.55 0.22 22);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.45 0.02 275 / 0.18);
+  --input: oklch(0.45 0.02 275 / 0.26);
+  --ring: oklch(0.54 0.2 285);
+
+  /*
+    Status colours are spelled out as Tailwind utilities across ~190 places —
+    text-emerald-400 for income, text-rose-400 for spend, amber for warnings.
+    Every one of those shades was chosen to glow on near-black, and every one of
+    them is unreadable on white.
+
+    Rather than touch all 190, the palette variables those utilities compile to
+    are redefined here. One block, and income stays green while becoming legible.
+  */
+  --color-emerald-200: oklch(0.508 0.118 165.6);
+  --color-emerald-300: oklch(0.508 0.118 165.6);
+  --color-emerald-400: oklch(0.55 0.13 164);
+  --color-rose-200: oklch(0.51 0.22 18);
+  --color-rose-300: oklch(0.51 0.22 18);
+  --color-rose-400: oklch(0.55 0.24 18);
+  --color-amber-200: oklch(0.51 0.13 60);
+  --color-amber-300: oklch(0.51 0.13 60);
+  --color-amber-400: oklch(0.58 0.15 59);
+  --color-sky-300: oklch(0.5 0.13 242);
+  --color-sky-400: oklch(0.55 0.15 242);
+  --color-violet-400: oklch(0.54 0.25 293);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -109,8 +175,21 @@
       radial-gradient(40rem 40rem at 80% 110%, oklch(0.62 0.19 330 / 0.1), transparent 55%);
   }
 
+  /* The same three glows, dialled right down — on a near-white ground the
+     dark-mode opacities read as stains rather than as light. */
+  .light body::before {
+    background:
+      radial-gradient(60rem 60rem at 15% -10%, oklch(0.62 0.19 285 / 0.09), transparent 60%),
+      radial-gradient(50rem 50rem at 100% 0%, oklch(0.6 0.15 220 / 0.07), transparent 55%),
+      radial-gradient(40rem 40rem at 80% 110%, oklch(0.62 0.19 330 / 0.06), transparent 55%);
+  }
+
   ::selection {
     background: oklch(0.62 0.19 285 / 0.35);
+  }
+
+  .light ::selection {
+    background: oklch(0.62 0.19 285 / 0.22);
   }
 
   /* Refined scrollbar */
@@ -132,6 +211,13 @@
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
     border: 1px solid oklch(0.4 0.02 275 / 0.25);
+  }
+
+  /* Frosted white rather than frosted black. The border has to be darker than
+     the surface here, where in dark mode it is lighter. */
+  .light .glass {
+    background: oklch(1 0 0 / 0.72);
+    border-color: oklch(0.45 0.02 275 / 0.14);
   }
 
 
@@ -174,11 +260,44 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .light .grid-bg {
+    background-image:
+      linear-gradient(oklch(0.4 0.02 275 / 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(0.4 0.02 275 / 0.07) 1px, transparent 1px);
+  }
+
+  .light .rule-fade {
+    background: linear-gradient(90deg, transparent, oklch(0.5 0.02 275 / 0.25), transparent);
+  }
+
+  /* The hero panel keeps its depth by inverting which edge catches the light:
+     a highlight along the top in dark mode, a shadow underneath in light. */
+  .light .app-frame {
+    background: oklch(1 0 0 / 0.95);
+    border-color: oklch(0.45 0.02 275 / 0.16);
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 0.9),
+      0 40px 80px -24px oklch(0.4 0.03 275 / 0.22),
+      0 0 120px -40px oklch(0.62 0.19 285 / 0.25);
+  }
+
   .text-gradient {
     background: linear-gradient(120deg, oklch(0.97 0.005 275), oklch(0.72 0.16 285));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+
+  /* Runs dark-to-violet instead of white-to-violet, or the headline fades out
+     into the page. */
+  .light .text-gradient {
+    background: linear-gradient(120deg, oklch(0.24 0.02 275), oklch(0.52 0.22 285));
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .light .glow {
+    box-shadow: 0 10px 40px -12px oklch(0.54 0.2 285 / 0.4);
   }
 
   /* Soft glow ring for primary CTAs. */
@@ -236,6 +355,9 @@
   margin: 0.9em 0;
 }
 .md pre code { background: transparent; padding: 0; font-size: 0.85rem; }
+.light .md a { color: oklch(0.5 0.22 285); }
+.light .md code { background: oklch(0.5 0.02 275 / 0.1); }
+.light .md pre { background: oklch(0.97 0.005 275); }
 .md hr { border: none; border-top: 1px solid var(--border); margin: 1.4em 0; }
 .md input[type="checkbox"] { margin-right: 0.5em; accent-color: var(--primary); }
 .md table { border-collapse: collapse; margin: 0.8em 0; width: 100%; }

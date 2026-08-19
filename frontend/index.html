@@ -45,6 +45,19 @@
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
       }
     </script>
+    <!--
+      Theme, before first paint. React cannot do this: by the time the bundle
+      runs the browser has already painted the prerendered HTML, and a dark page
+      flashing white (or the reverse) on every load is worse than having no light
+      mode at all.
+
+      A separate file rather than an inline script on purpose — the CSP is
+      `script-src 'self'` with no 'unsafe-inline', and that is worth more than
+      the one request this costs. Blocking (no defer): it has to win the race
+      against the first paint, and it is a few hundred bytes from the same
+      origin as the page.
+    -->
+    <script src="/theme-init.js"></script>
     <title>MyX — Your Life, Organized</title>
   </head>
   <body>

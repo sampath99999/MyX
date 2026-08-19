@@ -4,7 +4,8 @@ import { api, clearToken, getToken, setToken, UNAUTHORIZED_EVENT, type User } fr
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /** Resolves true when this sign-in cancelled a pending account deletion. */
+  login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, name: string, password: string) => Promise<void>;
   logout: () => void;
   /** Re-read the user from the server — used after email verification flips a flag. */
@@ -62,6 +63,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.login({ email, password });
     setToken(res.token);
     setUser(res.user);
+    // The server cancels a scheduled deletion when the owner signs back in; the
+    // caller needs to know so it can say so rather than silently carrying on.
+    return res.restored === true;
   }
 
   async function register(email: string, name: string, password: string) {

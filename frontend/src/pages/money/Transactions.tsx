@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Plus,
   ArrowUpRight,
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import ImportStatementDialog from "@/components/ImportStatementDialog";
+import TransactionDetailsDialog from "@/components/TransactionDetailsDialog";
 import LoadError from "@/components/LoadError";
 import { api, formatMoney, type Transaction } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
@@ -29,6 +31,16 @@ export default function Transactions() {
   const [summary, setSummary] = useState<{ count: number } | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  /*
+    The details modal is driven by the URL, not by state: /money/transactions/:id
+    is the same screen with one row opened. That makes it linkable — from search,
+    from a bookmark — and makes the browser's back button close it, which is what
+    people expect from a modal that has an address.
+  */
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const openId = id != null && /^\d+$/.test(id) ? Number(id) : null;
 
   const load = useCallback(async () => {
     const [s, t] = await Promise.all([api.moneySummary(), api.listTransactions({ limit: 100 })]);
@@ -50,31 +62,38 @@ export default function Transactions() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      <div className="flex items-center justify-between">
+      {/*
+        The two buttons are one group. Left as direct children of a
+        `justify-between` row they were three items, not two, so Import was
+        spaced out into the middle of the screen as if it belonged to nothing.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Transactions</h2>
           {summary && (
             <p className="text-sm text-muted-foreground">{summary.count} total entries</p>
           )}
         </div>
-        <ImportStatementDialog
-          onImported={reload}
-          trigger={
-            <Button size="sm" variant="secondary">
-              <Upload className="h-4 w-4" />
-              Import
-            </Button>
-          }
-        />
-        <AddTransactionDialog
-          onCreated={reload}
-          trigger={
-            <Button size="sm">
-              <Plus className="h-4 w-4" />
-              Add transaction
-            </Button>
-          }
-        />
+        <div className="flex items-center gap-2">
+          <ImportStatementDialog
+            onImported={reload}
+            trigger={
+              <Button size="sm" variant="secondary">
+                <Upload className="h-4 w-4" />
+                Import
+              </Button>
+            }
+          />
+          <AddTransactionDialog
+            onCreated={reload}
+            trigger={
+              <Button size="sm">
+                <Plus className="h-4 w-4" />
+                Add transaction
+              </Button>
+            }
+          />
+        </div>
       </div>
 
       <Card className="glass overflow-hidden">
@@ -111,34 +130,44 @@ export default function Transactions() {
                   key={t.id}
                   className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-accent/40"
                 >
-                  <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                      income ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"
-                    }`}
+                  {/*
+                    The row is a link to the transaction's own address, so
+                    opening one is shareable and survives a refresh. Edit and
+                    delete stay outside it — a link cannot contain a button.
+                  */}
+                  <Link
+                    to={`/money/transactions/${t.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-4"
                   >
-                    {income ? (
-                      <ArrowUpRight className="h-5 w-5" />
-                    ) : (
-                      <ArrowDownLeft className="h-5 w-5" />
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{t.category}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {formatDate(t.occurred_on)}
-                      {t.note ? ` · ${t.note}` : ""}
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                        income ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"
+                      }`}
+                    >
+                      {income ? (
+                        <ArrowUpRight className="h-5 w-5" />
+                      ) : (
+                        <ArrowDownLeft className="h-5 w-5" />
+                      )}
                     </div>
-                  </div>
 
-                  <div
-                    className={`text-sm font-semibold tabular-nums ${
-                      income ? "text-emerald-400" : "text-foreground"
-                    }`}
-                  >
-                    {income ? "+" : "−"}
-                    {formatMoney(t.amount)}
-                  </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{t.category}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {formatDate(t.occurred_on)}
+                        {t.note ? ` · ${t.note}` : ""}
+                      </div>
+                    </div>
+
+                    <div
+                      className={`shrink-0 text-sm font-semibold tabular-nums ${
+                        income ? "text-emerald-400" : "text-foreground"
+                      }`}
+                    >
+                      {income ? "+" : "−"}
+                      {formatMoney(t.amount)}
+                    </div>
+                  </Link>
 
                   <AddTransactionDialog
                     transaction={t}
@@ -171,6 +200,17 @@ export default function Transactions() {
           </ul>
         )}
       </Card>
+
+      {openId !== null && (
+        <TransactionDetailsDialog
+          id={openId}
+          // Handed the row when the list already has it, so opening one from the
+          // page is instant and only a deep link pays for a fetch.
+          known={transactions.find((t) => t.id === openId)}
+          onChanged={reload}
+          onClose={() => navigate("/money/transactions", { replace: true })}
+        />
+      )}
     </div>
   );
 }

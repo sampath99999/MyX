@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { requireAuth } from "../middleware";
+import { detectRecurring, signatureOf, LOOKBACK_DAYS, type TxnLike } from "../lib/detect";
 import type { AppBindings } from "../types";
 
 const recurring = new Hono<AppBindings>();
@@ -114,6 +115,72 @@ recurring.get("/summary", async (c) => {
     monthlyExpense: toRupees(Math.round(expense)),
     count: (results ?? []).length,
   });
+});
+
+/*
+  ----- Detection -----
+  Registered before the /:id routes so "suggestions" is never read as an id.
+*/
+
+/**
+ * GET /api/recurring/suggestions — bills the transactions already imply.
+ *
+ * Two things are filtered out before anything is proposed: signatures the user
+ * has already dismissed, and anything that looks like a rule they have already
+ * created. Suggesting a bill someone set up last week makes the whole feature
+ * feel like it is not paying attention.
+ */
+recurring.get("/suggestions", async (c) => {
+  const user = c.get("user");
+  const today = new Date().toISOString().slice(0, 10);
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
+
+  const [txns, existing, ignored] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT type, amount, category, note, occurred_on FROM transactions
+        WHERE user_id = ?1 AND occurred_on >= ?2
+        ORDER BY occurred_on LIMIT 5000`,
+    ).bind(user.sub, since),
+    c.env.DB.prepare("SELECT name, category FROM recurring WHERE user_id = ?").bind(user.sub),
+    c.env.DB.prepare("SELECT signature FROM recurring_ignored WHERE user_id = ?").bind(user.sub),
+  ]);
+
+  const dismissed = new Set(
+    ((ignored.results ?? []) as { signature: string }[]).map((r) => r.signature),
+  );
+  // Compared on the same normalised form the suggestions carry, so "NETFLIX" as
+  // a rule matches "netflix" out of a statement narration.
+  const alreadyHave = new Set(
+    ((existing.results ?? []) as { name: string; category: string }[]).map((r) =>
+      signatureOf(r.name, r.category),
+    ),
+  );
+
+  const suggestions = detectRecurring(
+    (txns.results ?? []) as TxnLike[],
+    today,
+  ).filter((s) => !dismissed.has(s.signature) && !alreadyHave.has(s.signature));
+
+  return c.json({
+    suggestions: suggestions.slice(0, 8).map((s) => ({ ...s, amount: toRupees(s.amount) })),
+  });
+});
+
+/** POST /api/recurring/suggestions/dismiss — stop proposing this one. */
+recurring.post("/suggestions/dismiss", async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json().catch(() => null);
+  const signature = String(body?.signature ?? "").trim();
+  if (!signature) throw new HTTPException(400, { message: "signature is required" });
+
+  await c.env.DB.prepare(
+    `INSERT INTO recurring_ignored (user_id, signature) VALUES (?, ?)
+     ON CONFLICT (user_id, signature) DO NOTHING`,
+  )
+    .bind(user.sub, signature)
+    .run();
+
+  return c.json({ ok: true });
 });
 
 /** POST /api/recurring — create. */

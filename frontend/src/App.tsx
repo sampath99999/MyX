@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { ThemeProvider } from "@/lib/theme";
 import AppLayout from "@/components/AppLayout";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { syncDocumentMeta } from "@/lib/seo";
@@ -143,6 +144,8 @@ export function AppRoutes() {
           <Route path="/money" element={<MoneyLayout />}>
             <Route index element={<MoneyOverview />} />
             <Route path="transactions" element={<Transactions />} />
+            {/* Same screen, one row opened — see pages/money/Transactions.tsx. */}
+            <Route path="transactions/:id" element={<Transactions />} />
             <Route path="recurring" element={<Recurring />} />
             <Route path="budgets" element={<Budgets />} />
             <Route path="loans" element={<Loans />} />
@@ -174,11 +177,13 @@ export function AppRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

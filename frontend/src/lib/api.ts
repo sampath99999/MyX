@@ -93,6 +93,86 @@ export interface User {
 export interface AuthResponse {
   token: string;
   user: User;
+  /** True when this sign-in cancelled a pending account deletion. */
+  restored?: boolean;
+}
+
+/**
+ * Downloads the account export and hands the browser a file.
+ *
+ * Not routed through `request`, which parses JSON into an object — this needs
+ * the raw bytes. A plain link cannot be used either, because the endpoint wants
+ * an Authorization header, so the response is turned into an object URL and a
+ * synthetic click. The URL is revoked straight after; leaving it alive keeps a
+ * copy of the user's entire history in memory for the life of the tab.
+ */
+export async function downloadExport(): Promise<{ filename: string; bytes: number }> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/api/auth/export`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(data.error ?? "Could not build the export", res.status);
+  }
+
+  const blob = await res.blob();
+  const filename = `myx-export-${new Date().toISOString().slice(0, 10)}.json`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  return { filename, bytes: blob.size };
+}
+
+/** A single cross-module search result. `kind` decides icon, label and link. */
+export interface SearchHit {
+  kind:
+    | "transaction"
+    | "task"
+    | "note"
+    | "memory"
+    | "checklist"
+    | "loan"
+    | "goal"
+    | "investment"
+    | "recurring"
+    | "project";
+  id: number;
+  title: string;
+  subtitle: string | null;
+  /** Rupees, or null for things that are not money. */
+  amount: number | null;
+  date: string | null;
+}
+
+export interface Notification {
+  id: string;
+  kind: "task" | "bill" | "budget";
+  severity: "urgent" | "warning" | "info";
+  title: string;
+  detail: string | null;
+  to: string;
+  date: string | null;
+}
+
+export interface RecurringSuggestion {
+  signature: string;
+  name: string;
+  type: "income" | "expense";
+  amount: number;
+  category: string;
+  frequency: "weekly" | "monthly" | "yearly";
+  interval: number;
+  next_due: string;
+  occurrences: number;
+  last_seen: string;
+  confidence: number;
 }
 
 export const api = {
@@ -147,9 +227,12 @@ export const api = {
   resetPassword: (body: { token: string; password: string }) =>
     request<{ ok: true }>("/api/auth/reset", { method: "POST", body: JSON.stringify(body) }),
 
-  /** Irreversible. The server re-checks the password before doing anything. */
+  /**
+   * Schedules deletion. Reversible for `grace_days` by signing in again; the
+   * server re-checks the password before doing anything.
+   */
   deleteAccount: (body: { password: string }) =>
-    request<{ ok: true }>("/api/auth/account", {
+    request<{ ok: true; restorable_until: number; grace_days: number }>("/api/auth/account", {
       method: "DELETE",
       body: JSON.stringify(body),
     }),
@@ -187,6 +270,29 @@ export const api = {
       } | null;
     }>("/api/dashboard/summary"),
 
+  // ----- Search and notifications (the header) -----
+
+  /** Everything matching, across every module. Empty below two characters. */
+  search: (q: string) =>
+    request<{ query: string; results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(q)}`),
+
+  /**
+   * Live attention items. Not a stored feed — these are conditions that are
+   * currently true, so there is nothing to mark as read.
+   */
+  notifications: () =>
+    request<{ items: Notification[]; count: number; urgent: number }>("/api/notifications"),
+
+  /** Recurring bills detected in the transaction history. */
+  recurringSuggestions: () =>
+    request<{ suggestions: RecurringSuggestion[] }>("/api/recurring/suggestions"),
+
+  dismissRecurringSuggestion: (signature: string) =>
+    request<{ ok: true }>("/api/recurring/suggestions/dismiss", {
+      method: "POST",
+      body: JSON.stringify({ signature }),
+    }),
+
   /*
     ----- Admin -----
     Owner-only. The API answers 404 to anyone not flagged as an admin in the
@@ -223,6 +329,14 @@ export const api = {
     request<{ ok: true }>(`/api/admin/errors/${fingerprint}/resolve`, { method: "POST" }),
 
   // ----- Money -----
+
+  /**
+   * One transaction by id. Needed because /money/transactions/:id is linkable,
+   * and the list on that page only holds the most recent hundred.
+   */
+  getTransaction: (id: number) =>
+    request<{ transaction: Transaction }>(`/api/transactions/${id}`),
+
   listTransactions: (params?: { limit?: number; type?: "income" | "expense" }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));

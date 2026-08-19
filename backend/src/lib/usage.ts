@@ -50,8 +50,9 @@ export async function collectUsage(db: D1Database): Promise<UsageReport> {
   const counts = await db
     .prepare(
       `SELECT
-         (SELECT COUNT(*) FROM users)                             AS users,
-         (SELECT COUNT(*) FROM users WHERE email_verified = 0)     AS unverified,
+         (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL)                          AS users,
+         (SELECT COUNT(*) FROM users WHERE email_verified = 0 AND deleted_at IS NULL)   AS unverified,
+         (SELECT COUNT(*) FROM users WHERE deleted_at IS NOT NULL)                      AS pending_deletion,
          (SELECT COUNT(*) FROM transactions) AS transactions,
          (SELECT COUNT(*) FROM tasks)        AS tasks,
          (SELECT COUNT(*) FROM notes)        AS notes`,
@@ -97,6 +98,26 @@ export async function pruneVerificationCodes(db: D1Database): Promise<number> {
   return result.meta?.changes ?? 0;
 }
 
+/** Days a deleted account can still be restored by signing in. */
+export const DELETION_GRACE_DAYS = 7;
+
+/**
+ * Erase accounts whose grace period has run out.
+ *
+ * This is the half of soft deletion that makes it a deletion rather than a
+ * hidden flag: past the window the row goes, and every ON DELETE CASCADE takes
+ * the transactions, tasks, notes and the rest with it — the same statement the
+ * delete endpoint used to run inline, just seven days later.
+ */
+export async function purgeDeletedAccounts(db: D1Database): Promise<number> {
+  const cutoff = Math.floor(Date.now() / 1000) - DELETION_GRACE_DAYS * 86_400;
+  const result = await db
+    .prepare("DELETE FROM users WHERE deleted_at IS NOT NULL AND deleted_at < ?")
+    .bind(cutoff)
+    .run();
+  return result.meta?.changes ?? 0;
+}
+
 /*
   Each step is isolated. The first version chained them, so the storage pragma
   failing on D1 meant no sweep, no usage line and no digests — one unsupported
@@ -108,6 +129,19 @@ export async function runDailyMaintenance(env: Env): Promise<UsageReport | null>
     swept = (await pruneResetTokens(env.DB)) + (await pruneVerificationCodes(env.DB));
   } catch (err) {
     console.error("[usage] sweep failed:", err);
+  }
+
+  // Its own try/catch, and announced when it does something: erasing an account
+  // for good is the one thing here worth finding in the logs afterwards.
+  try {
+    const purged = await purgeDeletedAccounts(env.DB);
+    if (purged > 0) {
+      console.log(
+        `[purge] ${purged} account(s) erased after the ${DELETION_GRACE_DAYS}-day restore window`,
+      );
+    }
+  } catch (err) {
+    console.error("[purge] failed:", err);
   }
 
   let usage: UsageReport | null = null;

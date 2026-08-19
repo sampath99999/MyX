@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Sparkles,
   Wallet,
@@ -10,13 +10,10 @@ import {
   Bell,
   CalendarClock,
   Check,
-  Plus,
   ArrowRight,
+  RotateCcw,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import PageHeader from "@/components/PageHeader";
-import AddTransactionDialog from "@/components/AddTransactionDialog";
 import LoadError from "@/components/LoadError";
 import { useAuth } from "@/lib/auth";
 import { api, formatMoney } from "@/lib/api";
@@ -81,6 +78,9 @@ function shortDate(iso: string): string {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  // Set by the sign-in that cancelled a pending deletion (see pages/Login.tsx).
+  const [params] = useSearchParams();
+  const restored = params.get("restored") === "1";
   const [summary, setSummary] = useState<Summary | null>(null);
 
   const load = useCallback(async () => {
@@ -157,35 +157,46 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        subtitle={new Date().toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-        })}
-      >
-        <AddTransactionDialog
-          onCreated={reload}
-          trigger={
-            <Button variant="secondary" size="sm">
-              <Plus className="h-4 w-4" />
-              Quick add
-            </Button>
-          }
-        />
-      </PageHeader>
-
       <div className="p-6 lg:p-8 space-y-8">
+        {/*
+          Signing in is what cancels a scheduled deletion, and it happens
+          server-side without ceremony — so this is the only place the user
+          finds out it worked. Worth a banner, not a toast: "did my data come
+          back?" is not a question to answer for two seconds and then hide.
+        */}
+        {restored && (
+          <Card className="glass flex items-start gap-3 border-emerald-500/30 p-4">
+            <RotateCcw className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+            <div>
+              <p className="font-medium">Welcome back — your account is restored.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                The deletion was cancelled and nothing was lost. Everything is exactly where you
+                left it.
+              </p>
+            </div>
+          </Card>
+        )}
+
         {error && (
           <Card className="glass p-4">
             <LoadError message={error} onRetry={reload} />
           </Card>
         )}
 
-        {/* Greeting */}
+        {/*
+          The greeting is the page title now. A sticky bar reading "Dashboard"
+          above a screen that already said "Welcome back, Sampath" was labelling
+          the obvious and costing 60px of a phone screen to do it.
+        */}
         <div className="animate-in-up">
-          <h2 className="text-3xl font-bold tracking-tight">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+          <h2 className="mt-1 text-3xl font-bold tracking-tight">
             {summary?.greeting ?? `Welcome back, ${firstName}`} 👋
           </h2>
           <p className="mt-1.5 text-muted-foreground">

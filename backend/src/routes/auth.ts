@@ -19,6 +19,10 @@ import {
   REGISTER_IP_RULE,
 } from "../lib/ratelimit";
 import { sendEmail, passwordResetEmail } from "../lib/email";
+import { buildExport } from "../lib/export";
+// The window is owned by the job that enforces it — one definition, so the
+// promise made here and the sweep that keeps it can never drift apart.
+import { DELETION_GRACE_DAYS } from "../lib/usage";
 import {
   generateOtp,
   hashOtp,
@@ -41,6 +45,8 @@ interface UserRow {
   token_version: number;
   email_verified: number;
   created_at: string;
+  /** Unix seconds when deletion was requested; NULL for a live account. */
+  deleted_at: number | null;
 }
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -90,10 +96,24 @@ auth.post("/register", async (c) => {
       message: `Password must be at most ${MAX_PASSWORD_LENGTH} characters`,
     });
 
-  const existing = await c.env.DB.prepare("SELECT id FROM users WHERE email = ?")
+  const existing = await c.env.DB.prepare("SELECT id, deleted_at FROM users WHERE email = ?")
     .bind(email)
-    .first();
-  if (existing) throw new HTTPException(409, { message: "An account with this email already exists" });
+    .first<{ id: number; deleted_at: number | null }>();
+  if (existing) {
+    /*
+      A deleted account still holds its address for the grace period, so signing
+      up again with it would otherwise fail on the UNIQUE constraint with a
+      message that is not just unhelpful but wrong — the account is not "already
+      there", it is on its way out and can be brought back.
+    */
+    if (existing.deleted_at) {
+      throw new HTTPException(409, {
+        message:
+          "This address belongs to an account that was recently deleted. Sign in to restore it, or wait for it to be erased.",
+      });
+    }
+    throw new HTTPException(409, { message: "An account with this email already exists" });
+  }
 
   const password_hash = await hashPassword(password);
   const inserted = await c.env.DB.prepare(
@@ -156,7 +176,7 @@ auth.post("/login", async (c) => {
     throw new HTTPException(401, { message: "Invalid email or password" });
 
   const user = await c.env.DB.prepare(
-    "SELECT id, email, name, password_hash, token_version, email_verified, created_at FROM users WHERE email = ?",
+    "SELECT id, email, name, password_hash, token_version, email_verified, created_at, deleted_at FROM users WHERE email = ?",
   )
     .bind(email)
     .first<UserRow>();
@@ -191,9 +211,26 @@ auth.post("/login", async (c) => {
     unverified account from using MyX without stranding it.
   */
 
+  /*
+    Signing in is how a deletion gets cancelled.
+
+    There is no separate "restore" screen, because there is no session to reach
+    one with — deleting bumps token_version and strands every token. Whoever
+    proves they own the account by typing the password is exactly the person
+    entitled to change their mind, so the correct place to undo it is here.
+
+    token_version is deliberately left where the deletion put it: other sessions
+    stay dead, and only this sign-in gets a working token.
+  */
+  const restored = user.deleted_at != null;
+  if (restored) {
+    await c.env.DB.prepare("UPDATE users SET deleted_at = NULL WHERE id = ?").bind(user.id).run();
+  }
+
   const token = await signToken(user, c.env.JWT_SECRET);
   return c.json({
     token,
+    restored,
     user: {
       id: user.id,
       email: user.email,
@@ -291,7 +328,11 @@ auth.post("/forgot", async (c) => {
   const accepted = { message: "If that address has an account, a reset link is on its way." };
   if (!emailRe.test(email)) return c.json(accepted, 202);
 
-  const user = await c.env.DB.prepare("SELECT id, email FROM users WHERE email = ?")
+  // A deleted account is skipped, silently — the reply is the same either way,
+  // and the way back for that account is to sign in, not to reset.
+  const user = await c.env.DB.prepare(
+    "SELECT id, email FROM users WHERE email = ? AND deleted_at IS NULL",
+  )
     .bind(email)
     .first<{ id: number; email: string }>();
   if (!user) return c.json(accepted, 202);
@@ -369,11 +410,56 @@ auth.post("/reset", async (c) => {
 });
 
 /**
- * DELETE /api/auth/account — erase the account and everything in it.
+ * GET /api/auth/export — a complete copy of the account, as JSON.
  *
- * Requires the current password: a stolen token should not be enough to destroy
- * someone's records. Every table's user_id carries ON DELETE CASCADE, so this
- * one statement removes the transactions, tasks, notes, checklists and the rest.
+ * Deliberately under /api/auth rather than with the data routes: it is an
+ * account operation, and it must keep working for an unverified account, which
+ * the verification gate in middleware.ts blocks everywhere else. Being able to
+ * delete your data but not take it with you would be an odd pair of rights.
+ */
+auth.get("/export", requireAuth, async (c) => {
+  const payload = c.get("user");
+  const user = await c.env.DB.prepare(
+    "SELECT email, name, created_at FROM users WHERE id = ?",
+  )
+    .bind(payload.sub)
+    .first<{ email: string; name: string; created_at: string }>();
+  if (!user) throw new HTTPException(404, { message: "Account not found" });
+
+  const bundle = await buildExport(c.env.DB, user, payload.sub);
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  /*
+    Content-Disposition rather than letting the browser render it: this is a
+    file someone is saving, and a 2 MB JSON blob painted into a tab is not that.
+    The client fetches it with an Authorization header and turns it into a
+    download, so the header is belt-and-braces for anyone hitting it directly.
+  */
+  return new Response(JSON.stringify(bundle, null, 2), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename="myx-export-${stamp}.json"`,
+      // A copy of someone's entire financial life should not sit in a cache.
+      "Cache-Control": "no-store",
+    },
+  });
+});
+
+/**
+ * DELETE /api/auth/account — schedule the account for erasure.
+ *
+ * This used to be a single `DELETE FROM users`, with every ON DELETE CASCADE
+ * taking the transactions, notes, tasks and the rest along with it before the
+ * request returned. It was honest about that, and it was still wrong: a misclick
+ * on a phone destroyed years of records, and the only reason a real account was
+ * ever recovered is that Cloudflare keeps 30 days of database history that no
+ * part of MyX knows about.
+ *
+ * Now it marks the row and revokes every session. Nothing is readable, nothing
+ * is reachable, and the daily cron erases it for real after the grace period —
+ * but signing in before then cancels it (see /login).
+ *
+ * Still requires the current password: a stolen token must not be enough.
  */
 auth.delete("/account", requireAuth, async (c) => {
   const payload = c.get("user");
@@ -391,8 +477,25 @@ auth.delete("/account", requireAuth, async (c) => {
     (await verifyPassword(password, user.password_hash));
   if (!ok) throw new HTTPException(403, { message: "Password is incorrect" });
 
-  await c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
-  return c.json({ ok: true });
+  const now = Math.floor(Date.now() / 1000);
+  await c.env.DB.batch([
+    // Bumping token_version is what makes this take effect immediately: every
+    // JWT already issued for the account stops verifying on the next request,
+    // on every device, exactly as the old hard delete did.
+    c.env.DB.prepare(
+      "UPDATE users SET deleted_at = ?, token_version = token_version + 1 WHERE id = ?",
+    ).bind(now, user.id),
+    // Outstanding codes and reset links are a way back in that should not
+    // outlive the account they belong to.
+    c.env.DB.prepare("DELETE FROM email_otps WHERE user_id = ?").bind(user.id),
+    c.env.DB.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(user.id),
+  ]);
+
+  return c.json({
+    ok: true,
+    restorable_until: now + DELETION_GRACE_DAYS * 86_400,
+    grace_days: DELETION_GRACE_DAYS,
+  });
 });
 
 /* ------------------------------------------------------------------ *

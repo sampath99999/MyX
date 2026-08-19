@@ -92,6 +92,29 @@ tx.get("/summary", async (c) => {
   });
 });
 
+/**
+ * GET /api/transactions/:id — one transaction.
+ *
+ * Registered after /summary so that word is never read as an id, and needed
+ * because /money/transactions/:id is a real, linkable address now: a search
+ * result or a bookmark can point at a single row, and the list only holds the
+ * most recent hundred.
+ */
+tx.get("/:id", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const row = await c.env.DB.prepare(
+    "SELECT id, type, amount, category, note, occurred_on, created_at FROM transactions WHERE id = ? AND user_id = ?",
+  )
+    .bind(id, user.sub)
+    .first<TxRow>();
+  if (!row) throw new HTTPException(404, { message: "Transaction not found" });
+
+  return c.json({ transaction: serialize(row) });
+});
+
 /** POST /api/transactions — create. Body: { type, amount, category, note?, occurred_on? } */
 tx.post("/", async (c) => {
   const user = c.get("user");

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
+import { ThemeProvider } from "@/lib/theme";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { AppRoutes } from "@/App";
 import { PAGES, SITE_URL } from "@/lib/seo";
@@ -29,11 +30,13 @@ export function renderRoute(path: string): string {
   return renderToString(
     <StrictMode>
       <ErrorBoundary>
-        <AuthProvider>
-          <MemoryRouter initialEntries={[path]}>
-            <AppRoutes />
-          </MemoryRouter>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <MemoryRouter initialEntries={[path]}>
+              <AppRoutes />
+            </MemoryRouter>
+          </AuthProvider>
+        </ThemeProvider>
       </ErrorBoundary>
     </StrictMode>,
   );

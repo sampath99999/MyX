@@ -48,12 +48,19 @@ export default function Login() {
     setLoading(true);
     try {
       if (mode === "login") {
-        await login(email, password);
-      } else {
-        await register(email, name, password);
+        /*
+          Signing in is what cancels a scheduled deletion, so this is the only
+          moment the user can be told it happened. Carried in the URL rather
+          than in state because the navigation replaces this component.
+        */
+        const restored = await login(email, password);
+        navigate(restored ? "/dashboard?restored=1" : "/dashboard", { replace: true });
+        return;
       }
+
+      await register(email, name, password);
       // A fresh account has a code waiting in its inbox; an existing one does not.
-      navigate(mode === "register" ? "/verify-email" : "/dashboard", { replace: true });
+      navigate("/verify-email", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     } finally {

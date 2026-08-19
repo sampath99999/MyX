@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import NewRecurringDialog from "@/components/NewRecurringDialog";
+import DetectedRecurring from "@/components/DetectedRecurring";
 import LoadError from "@/components/LoadError";
 import { getCategoryIcon } from "@/components/CategoryPicker";
 import { api, formatMoney, type Recurring, type Frequency } from "@/lib/api";
@@ -106,6 +107,10 @@ export default function Recurring() {
           }
         />
       </div>
+
+      {/* Sits above the list on purpose: it is only ever shown when there is
+          something to offer, and it is most useful right after an import. */}
+      {!loading && !error && <DetectedRecurring onAdded={reload} />}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">

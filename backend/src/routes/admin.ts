@@ -159,15 +159,25 @@ admin.get("/stats", async (c) => {
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
 
   const users = await c.env.DB.prepare(
+    // "Total" means live accounts. One waiting out its deletion grace period is
+    // counted separately — folding it into the headline would make the number
+    // drift from what the app actually serves.
     `SELECT
-       COUNT(*) AS total,
-       SUM(CASE WHEN email_verified = 1 THEN 1 ELSE 0 END) AS verified,
-       SUM(CASE WHEN digest_enabled = 1 THEN 1 ELSE 0 END) AS digest_on,
-       SUM(CASE WHEN date(created_at) >= ?1 THEN 1 ELSE 0 END) AS new_this_week
+       SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) AS total,
+       SUM(CASE WHEN email_verified = 1 AND deleted_at IS NULL THEN 1 ELSE 0 END) AS verified,
+       SUM(CASE WHEN digest_enabled = 1 AND deleted_at IS NULL THEN 1 ELSE 0 END) AS digest_on,
+       SUM(CASE WHEN date(created_at) >= ?1 AND deleted_at IS NULL THEN 1 ELSE 0 END) AS new_this_week,
+       SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS pending_deletion
      FROM users`,
   )
     .bind(weekAgo)
-    .first<{ total: number; verified: number; digest_on: number; new_this_week: number }>();
+    .first<{
+      total: number;
+      verified: number;
+      digest_on: number;
+      new_this_week: number;
+      pending_deletion: number;
+    }>();
 
   const content = await c.env.DB.prepare(
     `SELECT
@@ -245,7 +255,8 @@ admin.get("/health", async (c) => {
   const nowSeconds = now();
   const health = await c.env.DB.prepare(
     `SELECT
-       (SELECT COUNT(*) FROM users WHERE email_verified = 0)                        AS unverified_users,
+       (SELECT COUNT(*) FROM users WHERE email_verified = 0 AND deleted_at IS NULL) AS unverified_users,
+       (SELECT COUNT(*) FROM users WHERE deleted_at IS NOT NULL)                    AS awaiting_purge,
        (SELECT COUNT(*) FROM error_log WHERE resolved_at IS NULL)                   AS open_errors,
        (SELECT COALESCE(SUM(count), 0) FROM error_log WHERE last_seen >= ?1)        AS errors_24h,
        (SELECT COUNT(*) FROM password_resets WHERE used_at IS NULL AND expires_at > ?2) AS pending_resets,

@@ -38,6 +38,30 @@ class Stmt {
     const res = this.db.prepare(this.sql).run(...(this.args as never[]));
     return Promise.resolve({ success: true, meta: { changes: Number(res.changes) } });
   }
+
+  /*
+    What a batched statement gives back.
+
+    D1's batch() returns a full D1Result per statement — rows included — so a
+    batch of SELECTs is a legitimate way to make one round trip out of twenty
+    (see lib/export.ts). This used to call run() for every statement, which
+    executes the query but throws the rows away, so batched reads came back
+    empty and the code under test looked like it had found nothing.
+  */
+  batched(): Promise<{ success: true; results: Row[]; meta: { changes: number } }> {
+    const stmt = this.db.prepare(this.sql);
+    const reads = /^\s*(select|with)\b/i.test(this.sql);
+    if (reads || /\breturning\b/i.test(this.sql)) {
+      const results = stmt.all(...(this.args as never[])) as Row[];
+      return Promise.resolve({
+        success: true,
+        results,
+        meta: { changes: reads ? 0 : results.length },
+      });
+    }
+    const res = stmt.run(...(this.args as never[]));
+    return Promise.resolve({ success: true, results: [], meta: { changes: Number(res.changes) } });
+  }
 }
 
 export interface TestDb {
@@ -62,7 +86,7 @@ export function createTestDb(migrationsDir = join(import.meta.dirname, "../../mi
       raw.exec("BEGIN");
       try {
         const out = [];
-        for (const s of stmts) out.push(await s.run());
+        for (const s of stmts) out.push(await s.batched());
         raw.exec("COMMIT");
         return out;
       } catch (e) {

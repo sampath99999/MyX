@@ -99,8 +99,11 @@ export async function collectDue(
 
   const users = await db
     .prepare(
+      // deleted_at IS NULL: an account waiting out its grace period is not
+      // reachable in the app, and mailing it a summary of the data it just
+      // asked to be rid of would be a strange way to say goodbye.
       `SELECT id, email, name FROM users
-        WHERE digest_enabled = 1 AND email_verified = 1
+        WHERE digest_enabled = 1 AND email_verified = 1 AND deleted_at IS NULL
         ORDER BY id`,
     )
     .all<Recipient>();

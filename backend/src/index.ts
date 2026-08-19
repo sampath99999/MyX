@@ -18,6 +18,8 @@ import noteRoutes from "./routes/notes";
 import checklistRoutes from "./routes/checklists";
 import memoryRoutes from "./routes/memories";
 import adminRoutes from "./routes/admin";
+import searchRoutes from "./routes/search";
+import notificationRoutes from "./routes/notifications";
 import { requireAuth } from "./middleware";
 import { apiRateLimit } from "./lib/apilimit";
 import { runDailyMaintenance } from "./lib/usage";
@@ -35,6 +37,9 @@ app.use(
     origin: (origin, c) => (isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS) ? origin : null),
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
+    // The export is a download, and its filename lives in this header. Without
+    // exposing it the browser hides it from the fetch that asked for it.
+    exposeHeaders: ["Content-Disposition"],
     credentials: true,
   }),
 );
@@ -63,6 +68,8 @@ app.route("/api/notes", noteRoutes);
 app.route("/api/checklists", checklistRoutes);
 app.route("/api/memories", memoryRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/search", searchRoutes);
+app.route("/api/notifications", notificationRoutes);
 
 // Dashboard rollup across every module.
 app.get("/api/dashboard/summary", requireAuth, async (c) => {

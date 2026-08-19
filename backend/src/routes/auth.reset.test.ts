@@ -11,6 +11,7 @@ import { HTTPException } from "hono/http-exception";
 import authRoutes from "./auth";
 import { createTestDb, type TestDb } from "../test-support/d1";
 import { hashPassword } from "../lib/auth";
+import { purgeDeletedAccounts, DELETION_GRACE_DAYS } from "../lib/usage";
 import type { AppBindings } from "../types";
 
 let t: TestDb;
@@ -219,21 +220,38 @@ describe("DELETE /api/auth/account", () => {
       { method: "DELETE", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } },
     );
 
-  it("deletes the account when the password is right", async () => {
+  const deletedAt = () =>
+    (t.raw.prepare("SELECT deleted_at FROM users WHERE id = 1").get() as { deleted_at: number | null })
+      .deleted_at;
+
+  it("marks the account deleted when the password is right", async () => {
     const res = await del(await signIn(), "original-password");
     expect(res.status).toBe(200);
-    const row = t.raw.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
-    expect(row.n).toBe(0);
+    expect(deletedAt()).toBeGreaterThan(0);
   });
 
   it("refuses without the correct password, so a stolen token is not enough", async () => {
     const res = await del(await signIn(), "not-the-password");
     expect(res.status).toBe(403);
-    const row = t.raw.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
-    expect(row.n).toBe(1);
+    expect(deletedAt()).toBeNull();
   });
 
-  it("cascades to the user's data", async () => {
+  it("ends every session immediately", async () => {
+    /*
+      The row surviving must not mean the account survives. Nothing that held a
+      token before the deletion may keep using it, on any device.
+    */
+    const token = await signIn();
+    await del(token, "original-password");
+
+    const res = await makeApp()("/api/auth/me", undefined, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("keeps the data during the grace period, and signing in brings it back", async () => {
     t.raw
       .prepare(
         "INSERT INTO transactions (user_id, type, amount, category, occurred_on) VALUES (1, 'expense', 500, 'food', '2026-08-01')",
@@ -241,7 +259,93 @@ describe("DELETE /api/auth/account", () => {
       .run();
 
     await del(await signIn(), "original-password");
-    const row = t.raw.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number };
-    expect(row.n).toBe(0);
+    const kept = t.raw.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number };
+    expect(kept.n).toBe(1);
+
+    const res = await makeApp()("/api/auth/login", {
+      email: "a@b.co",
+      password: "original-password",
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { restored: boolean }).toMatchObject({ restored: true });
+    expect(deletedAt()).toBeNull();
+  });
+
+  it("blocks signing up again on the address while it is still restorable", async () => {
+    await del(await signIn(), "original-password");
+    // Signups are open on this instance; the check being exercised is the one
+    // about the address, not the one about whether registration is allowed.
+    const res = await makeApp({ REGISTRATION_OPEN: "true" })("/api/auth/register", {
+      email: "a@b.co",
+      name: "Someone",
+      password: "a-new-password",
+    });
+    // 409, and a message that says it can be restored — not "already exists",
+    // which would be both unhelpful and untrue.
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toMatch(/restore/i);
+  });
+
+  it("erases it for real once the window has passed", async () => {
+    t.raw
+      .prepare(
+        "INSERT INTO transactions (user_id, type, amount, category, occurred_on) VALUES (1, 'expense', 500, 'food', '2026-08-01')",
+      )
+      .run();
+    await del(await signIn(), "original-password");
+
+    // Still inside the window: the sweep must leave it alone.
+    expect(await purgeDeletedAccounts(t.db as D1Database)).toBe(0);
+
+    const expired = Math.floor(Date.now() / 1000) - (DELETION_GRACE_DAYS + 1) * 86_400;
+    t.raw.prepare("UPDATE users SET deleted_at = ? WHERE id = 1").run(expired);
+
+    expect(await purgeDeletedAccounts(t.db as D1Database)).toBe(1);
+    const users = t.raw.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
+    const rows = t.raw.prepare("SELECT COUNT(*) AS n FROM transactions").get() as { n: number };
+    expect(users.n).toBe(0);
+    // The cascade still does the real work — it just runs seven days later.
+    expect(rows.n).toBe(0);
+  });
+});
+
+describe("GET /api/auth/export", () => {
+  it("hands back everything the deletion would have destroyed", async () => {
+    t.raw
+      .prepare(
+        "INSERT INTO transactions (user_id, type, amount, category, note, occurred_on) VALUES (1, 'expense', 45000, 'Food', 'Lunch', '2026-08-01')",
+      )
+      .run();
+    t.raw
+      .prepare("INSERT INTO notes (user_id, title, content, tags) VALUES (1, 'Wifi', 'the password', 'home,keys')")
+      .run();
+
+    const login = await makeApp()("/api/auth/login", {
+      email: "a@b.co",
+      password: "original-password",
+    });
+    const { token } = (await login.json()) as { token: string };
+
+    const res = await makeApp()("/api/auth/export", undefined, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Disposition")).toMatch(/attachment/);
+
+    const bundle = (await res.json()) as {
+      counts: Record<string, number>;
+      money: { transactions: { amount: number; note: string }[] };
+      notes: { items: { title: string; tags: string[] }[] };
+    };
+    expect(bundle.counts.transactions).toBe(1);
+    // Paise in the database, rupees in the file — nobody reads 45000 as ₹450.
+    expect(bundle.money.transactions[0].amount).toBe(450);
+    expect(bundle.notes.items[0].tags).toEqual(["home", "keys"]);
+  });
+
+  it("cannot be fetched without a session", async () => {
+    const res = await makeApp()("/api/auth/export", undefined, { method: "GET" });
+    expect(res.status).toBe(401);
   });
 });
