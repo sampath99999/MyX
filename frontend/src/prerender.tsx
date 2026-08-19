@@ -4,34 +4,95 @@ import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { AppRoutes } from "@/App";
+import { PAGES, SITE_URL } from "@/lib/seo";
+import { FAQS } from "@/pages/EmiCalculator";
 
 /*
-  Build-time render of the public landing page (see scripts/prerender.mjs).
+  Build-time render of every public route (see scripts/prerender.mjs).
 
-  MyX is a client-rendered SPA, so without this the crawler's first response is
-  an empty <div id="root">. Google will execute the JavaScript eventually, but
-  Bing and every social-card scraper will not, and a page whose content arrives
-  in a second request ranks worse than one that ships it in the HTML.
+  MyX is a client-rendered SPA, so without this a crawler's first response is an
+  empty <div id="root">. Google will execute the JavaScript eventually, but Bing
+  and every social-card scraper will not, and content that arrives in a second
+  request ranks worse than content in the HTML.
 
-  This mirrors main.tsx exactly — same StrictMode, same AuthProvider, same route
-  tree — with MemoryRouter standing in for BrowserRouter, which needs a window.
-  Any structural difference makes React discard the markup and re-render on
-  hydration, which costs more than it saves. AuthProvider starts at user=null on
-  both sides, so the logged-out landing page is what both produce.
+  Each route is rendered separately and written to its own file. The first
+  version produced only dist/index.html, which Pages then served for every path
+  — so /privacy and /terms both answered with the landing page's markup and
+  title, which reads as duplicate content of the home page.
 
-  Only "/" is prerendered: it is the sole indexable route, and the only one
-  whose markup does not depend on who is signed in.
+  The tree mirrors main.tsx exactly, with MemoryRouter standing in for
+  BrowserRouter, which needs a window. Any structural difference makes React
+  discard the markup on hydration, which costs more than prerendering saves.
 */
-export function renderLanding(): string {
+
+export function renderRoute(path: string): string {
   return renderToString(
     <StrictMode>
       <ErrorBoundary>
         <AuthProvider>
-          <MemoryRouter initialEntries={["/"]}>
+          <MemoryRouter initialEntries={[path]}>
             <AppRoutes />
           </MemoryRouter>
         </AuthProvider>
       </ErrorBoundary>
     </StrictMode>,
   );
+}
+
+/** Routes to prerender, with the metadata each page's HTML head needs. */
+export function routesToPrerender() {
+  return PAGES;
+}
+
+/**
+ * Extra JSON-LD for a route, beyond the site-wide WebApplication block.
+ *
+ * The calculator's questions are marked up as a FAQPage so they can surface as
+ * rich results — the same copy the page renders, not a parallel version that
+ * drifts, which is both a maintenance trap and against Google's guidelines.
+ */
+export function structuredDataFor(path: string): string | null {
+  if (path !== "/emi-calculator") return null;
+
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "FAQPage",
+        mainEntity: FAQS.map((f) => ({
+          "@type": "Question",
+          name: f.q,
+          acceptedAnswer: { "@type": "Answer", text: f.a },
+        })),
+      },
+      {
+        "@type": "WebApplication",
+        name: "MyX EMI Calculator",
+        url: `${SITE_URL}/emi-calculator`,
+        applicationCategory: "FinanceApplication",
+        operatingSystem: "Any",
+        offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },
+      },
+    ],
+  });
+}
+
+/** The sitemap, generated from the same list so it cannot fall out of step. */
+export function sitemapXml(lastmod: string): string {
+  const urls = PAGES.filter((p) => p.sitemap)
+    .map(
+      (p) => `  <url>
+    <loc>${SITE_URL}${p.path === "/" ? "/" : p.path}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>${p.sitemap!.changefreq}</changefreq>
+    <priority>${p.sitemap!.priority}</priority>
+  </url>`,
+    )
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls}
+</urlset>
+`;
 }

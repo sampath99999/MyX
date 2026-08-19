@@ -3,6 +3,7 @@ import { createRoot, hydrateRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
 import { registerServiceWorker } from "./lib/pwa";
+import { metaFor } from "./lib/seo";
 
 const root = document.getElementById("root")!;
 const tree = (
@@ -12,16 +13,15 @@ const tree = (
 );
 
 /*
-  "/" ships with the landing page already rendered into the HTML (see
-  scripts/prerender.mjs), so hydrate it rather than throwing that markup away
-  and painting the same thing again.
+  The public pages ship with their markup already rendered into the HTML (see
+  scripts/prerender.mjs), so those hydrate rather than throwing it away and
+  painting the same thing again.
 
-  Every other path gets the *same* file — public/_redirects serves the SPA shell
-  for all routes — so the prerendered landing markup is sitting in the root on
-  /money and /login too. Hydrating there would mismatch against a completely
-  different tree, so those clear the root and render from scratch.
+  Everything else falls back to the SPA shell in public/_redirects, which still
+  carries the landing page's markup in the root. Hydrating that against a
+  completely different tree would mismatch, so those clear the root first.
 */
-if (window.location.pathname === "/" && root.firstChild) {
+if (metaFor(window.location.pathname) && root.firstChild) {
   hydrateRoot(root, tree);
 } else {
   root.innerHTML = "";

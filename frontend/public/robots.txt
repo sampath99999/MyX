@@ -5,6 +5,7 @@ User-agent: *
 Allow: /$
 Allow: /privacy
 Allow: /terms
+Allow: /emi-calculator
 Disallow: /dashboard
 Disallow: /money
 Disallow: /tasks

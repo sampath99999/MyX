@@ -1,9 +1,10 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import AppLayout from "@/components/AppLayout";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { syncDocumentMeta } from "@/lib/seo";
 /*
   Route-level code splitting. Everything used to land in one 994 kB bundle, so a
   phone paid for Recharts (Money charts) and the markdown renderer (Notes) just
@@ -13,10 +14,11 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 // Eager: the landing page is the prerendered entry point, so lazy-loading it
 // would mean shipping a static page that still waits on a second request.
 import Landing from "@/pages/Landing";
+import EmiCalculator from "@/pages/EmiCalculator";
+import Privacy from "@/pages/Privacy";
+import Terms from "@/pages/Terms";
 
 const Login = lazy(() => import("@/pages/Login"));
-const Privacy = lazy(() => import("@/pages/Privacy"));
-const Terms = lazy(() => import("@/pages/Terms"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
@@ -74,14 +76,23 @@ function PublicOnly({ children }: { children: React.ReactNode }) {
   when the two differ at all, React throws the whole server markup away and
   re-renders from scratch, which is worse than not prerendering.
 */
+/** Title and canonical follow the route, not just the initial HTML. */
+function DocumentMeta() {
+  const { pathname } = useLocation();
+  useEffect(() => syncDocumentMeta(pathname), [pathname]);
+  return null;
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<FullScreenLoader />}>
+      <DocumentMeta />
       <Routes>
         {/* Public, indexable routes — the only ones a crawler ever sees. */}
         <Route path="/" element={<Landing />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
+        <Route path="/emi-calculator" element={<EmiCalculator />} />
 
         {/* Reachable while signed out — a locked-out user has no session. */}
         <Route

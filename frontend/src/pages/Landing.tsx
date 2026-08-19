@@ -24,13 +24,21 @@ import AppPreview from "@/components/landing/AppPreview";
   layout, and the pairing of long and short copy is what stops six equal cards
   reading as a list of features nobody wrote.
 */
-const modules = [
+const modules: {
+  icon: typeof Wallet;
+  title: string;
+  span?: string;
+  body: string;
+  detail?: string;
+  link?: { to: string; label: string };
+}[] = [
   {
     icon: Wallet,
     title: "Money",
     span: "sm:col-span-2",
     body: "Income, expenses and a running balance. Budgets per category, bills that roll their own due dates forward, and EMI loans on reducing-balance amortization that match the bank to the paise.",
     detail: "Dashboard · Transactions · Recurring · Budgets · Loans · Goals · Investments",
+    link: { to: "/emi-calculator", label: "Try the free EMI calculator" },
   },
   {
     icon: CheckCircle2,
@@ -102,6 +110,12 @@ export default function Landing() {
             >
               How it's built
             </a>
+            <Link
+              to="/emi-calculator"
+              className="hidden rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:text-foreground sm:block"
+            >
+              EMI calculator
+            </Link>
             <Link
               to={user ? "/dashboard" : "/login"}
               className="rounded-lg px-3 py-2 font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -196,6 +210,15 @@ export default function Landing() {
               <m.icon className="h-5 w-5 text-primary" />
               <h3 className="mt-4 font-semibold">{m.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{m.body}</p>
+              {m.link && (
+                <Link
+                  to={m.link.to}
+                  className="mt-4 inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  {m.link.label}
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              )}
               {m.detail && (
                 <p className="mt-auto pt-5 text-[11px] leading-relaxed text-muted-foreground/60">
                   {m.detail}
@@ -290,6 +313,9 @@ export default function Landing() {
             <span>© {new Date().getFullYear()} MyX</span>
           </div>
           <div className="flex flex-wrap gap-6">
+            <Link to="/emi-calculator" className="hover:text-foreground">
+              EMI calculator
+            </Link>
             <Link to="/privacy" className="hover:text-foreground">
               Privacy
             </Link>
