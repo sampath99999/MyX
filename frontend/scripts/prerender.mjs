@@ -5,7 +5,7 @@
   bundle, so there is no separate build config to keep in sync — the page that
   ships is the page that renders.
 
-  Each route gets its own file (dist/emi-calculator/index.html and so on) with
+  Each route gets its own file (dist/emi-calculator.html and so on) with
   its own <title>, description and canonical. Cloudflare Pages serves those
   ahead of the SPA fallback in public/_redirects, so a crawler asking for
   /emi-calculator gets that page's content rather than the home page's.
@@ -124,10 +124,16 @@ try {
           `    <script type="application/ld+json">${extra}</script>\n  </head>`,
         );
       }
-      // "/" overwrites the shell itself; every other route gets a directory so
-      // Pages can serve it as a static file before falling back to the SPA.
+      /*
+        "/" overwrites the shell itself; every other route is written as
+        <route>.html rather than <route>/index.html.
+
+        Pages resolves /emi-calculator against emi-calculator.html directly, but
+        against emi-calculator/index.html only after a 308 to the trailing-slash
+        form — which left every canonical pointing at a URL that redirects.
+      */
       const out =
-        page.path === "/" ? shellPath : join(root, "dist", page.path.slice(1), "index.html");
+        page.path === "/" ? shellPath : join(root, "dist", `${page.path.slice(1)}.html`);
       mkdirSync(dirname(out), { recursive: true });
       writeFileSync(out, html, "utf8");
       console.log(`prerender: ${page.path} → ${markup.length} chars`);
