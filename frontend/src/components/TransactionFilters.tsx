@@ -202,98 +202,109 @@ export default function TransactionFilters({
       </div>
 
       {expanded && (
-        <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/60 p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Category</span>
-            <select
-              value={query.category ?? ""}
-              onChange={(e) => onChange({ ...query, category: e.target.value || undefined })}
-              className={`${control} w-full`}
-            >
-              <option value="">Every category</option>
-              {categories.map((c) => (
-                <option key={c.category} value={c.category}>
-                  {c.category} ({c.n})
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <ArrowUpDown className="h-3 w-3" />
-              Sort
-            </span>
-            <select
-              value={query.sort ?? "date_desc"}
-              onChange={(e) => onChange({ ...query, sort: e.target.value as TransactionSort })}
-              className={`${control} w-full`}
-            >
-              {SORTS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Amount (₹)</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                placeholder="Min"
-                aria-label="Minimum amount"
-                value={query.min ?? ""}
-                onChange={(e) =>
-                  onChange({ ...query, min: e.target.value === "" ? undefined : Number(e.target.value) })
-                }
+        <div className="space-y-4 rounded-xl border border-border/60 p-4">
+          {/*
+            Three columns, not four. The two date fields used to live here as a
+            fourth, and a native date input will not render below about 150px —
+            at a quarter of the panel they had 110px and spilled off the right
+            edge. They have their own row below now, and only when they are
+            actually needed.
+          */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="min-w-0 space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Category</span>
+              <select
+                value={query.category ?? ""}
+                onChange={(e) => onChange({ ...query, category: e.target.value || undefined })}
                 className={`${control} w-full`}
-              />
-              <span className="text-muted-foreground">–</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                placeholder="Max"
-                aria-label="Maximum amount"
-                value={query.max ?? ""}
-                onChange={(e) =>
-                  onChange({ ...query, max: e.target.value === "" ? undefined : Number(e.target.value) })
-                }
+              >
+                <option value="">Every category</option>
+                {categories.map((c) => (
+                  <option key={c.category} value={c.category}>
+                    {c.category} ({c.n})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="min-w-0 space-y-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <ArrowUpDown className="h-3 w-3" />
+                Sort
+              </span>
+              <select
+                value={query.sort ?? "date_desc"}
+                onChange={(e) => onChange({ ...query, sort: e.target.value as TransactionSort })}
                 className={`${control} w-full`}
-              />
+              >
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="min-w-0 space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Amount (₹)</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  placeholder="Min"
+                  aria-label="Minimum amount"
+                  value={query.min ?? ""}
+                  onChange={(e) =>
+                    onChange({ ...query, min: e.target.value === "" ? undefined : Number(e.target.value) })
+                  }
+                  className={`${control} w-full min-w-0`}
+                />
+                <span className="shrink-0 text-muted-foreground">–</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  placeholder="Max"
+                  aria-label="Maximum amount"
+                  value={query.max ?? ""}
+                  onChange={(e) =>
+                    onChange({ ...query, max: e.target.value === "" ? undefined : Number(e.target.value) })
+                  }
+                  className={`${control} w-full min-w-0`}
+                />
+              </div>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Dates</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                aria-label="From date"
-                value={query.from ?? ""}
-                onChange={(e) => {
-                  setRange("custom");
-                  onChange({ ...query, from: e.target.value || undefined });
-                }}
-                className={`${control} w-full`}
-              />
-              <span className="text-muted-foreground">–</span>
-              <input
-                type="date"
-                aria-label="To date"
-                value={query.to ?? ""}
-                onChange={(e) => {
-                  setRange("custom");
-                  onChange({ ...query, to: e.target.value || undefined });
-                }}
-                className={`${control} w-full`}
-              />
+          {/*
+            Only for "Custom…". The dropdown above already covers this month,
+            last month, the last three and this year, which is what people pick
+            almost every time — two empty date fields sitting under them is a
+            control that mostly exists to be ignored.
+          */}
+          {range === "custom" && (
+            <div className="space-y-1.5 border-t border-border/40 pt-4">
+              <span className="text-xs font-medium text-muted-foreground">Between</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  aria-label="From date"
+                  value={query.from ?? ""}
+                  onChange={(e) => onChange({ ...query, from: e.target.value || undefined })}
+                  className={`${control} min-w-[9.5rem] flex-1 sm:max-w-[12rem] sm:flex-none`}
+                />
+                <span className="shrink-0 text-muted-foreground">–</span>
+                <input
+                  type="date"
+                  aria-label="To date"
+                  value={query.to ?? ""}
+                  onChange={(e) => onChange({ ...query, to: e.target.value || undefined })}
+                  className={`${control} min-w-[9.5rem] flex-1 sm:max-w-[12rem] sm:flex-none`}
+                />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
