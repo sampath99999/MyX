@@ -209,4 +209,68 @@ tx.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Bounded so one request cannot hold the Worker for the length of a whole statement. */
+const MAX_IMPORT_ROWS = 500;
+
+/**
+ * POST /api/transactions/import — write many rows at once.
+ *
+ * Manual entry is what kills a money app: the charts, budgets and digest are
+ * all starved until a year of history is in, and nobody types a year of
+ * history. This is the endpoint behind importing a bank statement.
+ *
+ * Parsing and column-mapping happen in the browser — the file never leaves the
+ * user's machine, which matters when the file is a bank statement, and the
+ * server sees only the rows it is being asked to store.
+ *
+ * The batch is all-or-nothing: a half-imported statement is worse than a failed
+ * one, because it is invisible until the totals look wrong.
+ */
+tx.post("/import", async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json().catch(() => null);
+  const rows = body?.transactions;
+
+  if (!Array.isArray(rows) || rows.length === 0)
+    throw new HTTPException(400, { message: "transactions must be a non-empty array" });
+  if (rows.length > MAX_IMPORT_ROWS)
+    throw new HTTPException(400, {
+      message: `Too many rows at once — split the file into batches of ${MAX_IMPORT_ROWS}`,
+    });
+
+  // Validated up front, so nothing is written if any row is bad. The index is
+  // reported because "row 3 has no category" is actionable and "invalid" is not.
+  const prepared = rows.map((row: Record<string, unknown>, i: number) => {
+    const fail = (message: string): never => {
+      throw new HTTPException(400, { message: `Row ${i + 1}: ${message}` });
+    };
+
+    const type = row?.type;
+    if (type !== "income" && type !== "expense") fail("type must be 'income' or 'expense'");
+
+    const amount = Number(row?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) fail("amount must be a positive number");
+
+    const category = String(row?.category ?? "").trim();
+    if (!category) fail("category is required");
+
+    const occurred_on = String(row?.occurred_on ?? "");
+    if (!dateRe.test(occurred_on)) fail("occurred_on must be YYYY-MM-DD");
+
+    const note = row?.note ? String(row.note).trim().slice(0, 500) : null;
+    return { type, amount: toPaise(amount), category: category.slice(0, 60), note, occurred_on };
+  });
+
+  await c.env.DB.batch(
+    prepared.map((r) =>
+      c.env.DB.prepare(
+        `INSERT INTO transactions (user_id, type, amount, category, note, occurred_on)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).bind(user.sub, r.type, r.amount, r.category, r.note, r.occurred_on),
+    ),
+  );
+
+  return c.json({ imported: prepared.length }, 201);
+});
+
 export default tx;

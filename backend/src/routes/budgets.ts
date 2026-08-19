@@ -30,10 +30,27 @@ function serialize(b: BudgetJoinRow) {
   };
 }
 
-/** GET /api/budgets — budgets with current-month spend joined in. */
+/**
+ * GET /api/budgets — budgets with a month's spend joined in.
+ *
+ * `?month=YYYY-MM` looks at any month, defaulting to the current one. Budgets
+ * were current-month only, so there was no way to see whether last month went
+ * well — which is the only way to know a limit is working. Spend is derived
+ * from transactions, so history needs no table of its own; the one thing it
+ * cannot reconstruct is a limit that has since been changed.
+ */
 budgets.get("/", async (c) => {
   const user = c.get("user");
-  const monthLike = `${new Date().toISOString().slice(0, 7)}%`;
+
+  const requestedMonth = c.req.query("month");
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  if (requestedMonth !== undefined && !/^\d{4}-\d{2}$/.test(requestedMonth))
+    throw new HTTPException(400, { message: "month must be in YYYY-MM form" });
+  if (requestedMonth !== undefined && requestedMonth > currentMonth)
+    throw new HTTPException(400, { message: "month cannot be in the future" });
+
+  const month = requestedMonth ?? currentMonth;
+  const monthLike = `${month}%`;
 
   const { results } = await c.env.DB.prepare(
     `SELECT b.id, b.category, b.amount,
@@ -56,6 +73,7 @@ budgets.get("/", async (c) => {
   const totalSpent = items.reduce((s, b) => s + b.spent, 0);
 
   return c.json({
+    month,
     budgets: items,
     totals: {
       limit: totalLimit,

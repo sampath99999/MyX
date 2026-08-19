@@ -219,6 +219,25 @@ export const api = {
     body: JSON.stringify(body),
   }),
 
+  /**
+   * Bulk write, used by the statement importer. All-or-nothing on the server:
+   * a half-imported statement is worse than a failed one, because it is
+   * invisible until the totals look wrong.
+   */
+  importTransactions: (
+    transactions: {
+      type: "income" | "expense";
+      amount: number;
+      category: string;
+      note?: string;
+      occurred_on: string;
+    }[],
+  ) =>
+    request<{ imported: number }>("/api/transactions/import", {
+      method: "POST",
+      body: JSON.stringify({ transactions }),
+    }),
+
   /** Correct an entry. Omitted fields are left as they are; note accepts null to clear. */
   updateTransaction: (
     id: number,
@@ -239,6 +258,16 @@ export const api = {
     request<{ ok: true }>(`/api/transactions/${id}`, { method: "DELETE" }),
 
   // ----- Savings Goals -----
+  goalContributions: (id: number) =>
+    request<{
+      contributions: { id: number; amount: number; occurred_on: string; note: string | null }[];
+    }>(`/api/goals/${id}/contributions`),
+
+  investmentHistory: (id: number) =>
+    request<{ history: { value: number; recorded_on: string }[] }>(
+      `/api/investments/${id}/history`,
+    ),
+
   listGoals: () => request<{ goals: Goal[] }>("/api/goals"),
 
   createGoal: (body: {
@@ -249,10 +278,11 @@ export const api = {
     target_date?: string | null;
   }) => request<{ goal: Goal }>("/api/goals", { method: "POST", body: JSON.stringify(body) }),
 
-  contributeGoal: (id: number, amount: number) =>
+  /** `occurredOn` records when the money actually moved, not when it was logged. */
+  contributeGoal: (id: number, amount: number, occurredOn?: string) =>
     request<{ goal: Goal }>(`/api/goals/${id}/contribute`, {
       method: "POST",
-      body: JSON.stringify({ amount }),
+      body: JSON.stringify({ amount, occurred_on: occurredOn }),
     }),
 
   updateGoal: (
@@ -305,10 +335,13 @@ export const api = {
     request<{ ok: true }>(`/api/recurring/${id}`, { method: "DELETE" }),
 
   // ----- Budgets -----
-  listBudgets: () =>
-    request<{ budgets: Budget[]; totals: { limit: number; spent: number; remaining: number } }>(
-      "/api/budgets",
-    ),
+  /** `month` is YYYY-MM; omit for the current one. Spend is derived from transactions. */
+  listBudgets: (month?: string) =>
+    request<{
+      month: string;
+      budgets: Budget[];
+      totals: { limit: number; spent: number; remaining: number };
+    }>(`/api/budgets${month ? `?month=${month}` : ""}`),
 
   createBudget: (body: { category: string; amount: number }) =>
     request<{ budget: Budget }>("/api/budgets", { method: "POST", body: JSON.stringify(body) }),

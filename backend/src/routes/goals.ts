@@ -83,7 +83,16 @@ goals.post("/", async (c) => {
   return c.json({ goal: serialize(created) }, 201);
 });
 
-/** POST /api/goals/:id/contribute — add (or withdraw with negative) funds. Body: { amount } */
+/**
+ * POST /api/goals/:id/contribute — add (or withdraw with negative) funds.
+ *
+ * Also writes a contribution row. Before this the goal only knew its running
+ * total: there was no record that money had been added, when, or how much, so
+ * progress over time could never be drawn and a mistaken amount could not be
+ * traced back.
+ *
+ * Body: { amount, occurred_on?, note? }
+ */
 goals.post("/:id/contribute", async (c) => {
   const user = c.get("user");
   const id = Number(c.req.param("id"));
@@ -99,17 +108,63 @@ goals.post("/:id/contribute", async (c) => {
     .first<GoalRow>();
   if (!goal) throw new HTTPException(404, { message: "Goal not found" });
 
-  const nextSaved = Math.max(goal.saved_amount + toPaise(amount), 0);
+  // Money is usually moved before it is logged, so the date is the caller's.
+  const today = new Date().toISOString().slice(0, 10);
+  let occurredOn = today;
+  if (body?.occurred_on !== undefined && body?.occurred_on !== null) {
+    const requested = String(body.occurred_on);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(requested))
+      throw new HTTPException(400, { message: "occurred_on must be a date in YYYY-MM-DD form" });
+    if (requested > today)
+      throw new HTTPException(400, { message: "occurred_on cannot be in the future" });
+    occurredOn = requested;
+  }
+
+  const note = body?.note ? String(body.note).trim().slice(0, 200) || null : null;
+
+  /*
+    A withdrawal larger than the balance is clamped to zero rather than refused,
+    which is long-standing behaviour. The contribution row records what actually
+    moved, not what was asked for, so the history still sums to saved_amount.
+  */
+  const requestedDelta = toPaise(amount);
+  const nextSaved = Math.max(goal.saved_amount + requestedDelta, 0);
+  const appliedDelta = nextSaved - goal.saved_amount;
   const completed =
     nextSaved >= goal.target_amount ? (goal.completed_at ?? new Date().toISOString()) : null;
 
-  const updated = await c.env.DB.prepare(
-    "UPDATE goals SET saved_amount = ?, completed_at = ? WHERE id = ? AND user_id = ? RETURNING *",
-  )
-    .bind(nextSaved, completed, id, user.sub)
-    .first<GoalRow>();
+  const [, updatedRes] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO goal_contributions (goal_id, user_id, amount, occurred_on, note)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(id, user.sub, appliedDelta, occurredOn, note),
+    c.env.DB.prepare(
+      "UPDATE goals SET saved_amount = ?, completed_at = ? WHERE id = ? AND user_id = ? RETURNING *",
+    ).bind(nextSaved, completed, id, user.sub),
+  ]);
 
-  return c.json({ goal: serialize(updated!) });
+  const updated = (updatedRes.results as GoalRow[])[0];
+  return c.json({ goal: serialize(updated) });
+});
+
+/** GET /api/goals/:id/contributions — what was put in, and when. */
+goals.get("/:id/contributions", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, amount, occurred_on, note, created_at FROM goal_contributions
+      WHERE goal_id = ? AND user_id = ?
+      ORDER BY occurred_on DESC, id DESC
+      LIMIT 200`,
+  )
+    .bind(id, user.sub)
+    .all<{ id: number; amount: number; occurred_on: string; note: string | null }>();
+
+  return c.json({
+    contributions: (results ?? []).map((r) => ({ ...r, amount: r.amount / 100 })),
+  });
 });
 
 /** PATCH /api/goals/:id — edit name / target / emoji / target_date. */

@@ -6,11 +6,13 @@ import {
   Wallet,
   Trash2,
   Pencil,
+  Upload,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
+import ImportStatementDialog from "@/components/ImportStatementDialog";
 import LoadError from "@/components/LoadError";
 import { api, formatMoney, type Transaction } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
@@ -55,6 +57,15 @@ export default function Transactions() {
             <p className="text-sm text-muted-foreground">{summary.count} total entries</p>
           )}
         </div>
+        <ImportStatementDialog
+          onImported={reload}
+          trigger={
+            <Button size="sm" variant="secondary">
+              <Upload className="h-4 w-4" />
+              Import
+            </Button>
+          }
+        />
         <AddTransactionDialog
           onCreated={reload}
           trigger={

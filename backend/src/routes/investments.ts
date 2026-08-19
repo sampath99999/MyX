@@ -108,6 +108,16 @@ investments.post("/", async (c) => {
     .first<InvestmentRow>();
 
   if (!created) throw new HTTPException(500, { message: "Failed to create investment" });
+
+  // The opening valuation, so the very first update draws a line rather than a
+  // single point.
+  await c.env.DB.prepare(
+    `INSERT INTO investment_values (investment_id, user_id, value, recorded_on)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (investment_id, recorded_on) DO NOTHING`,
+  )
+    .bind(created.id, user.sub, created.current_value, new Date().toISOString().slice(0, 10))
+    .run();
   return c.json({ investment: serialize(created) }, 201);
 });
 
@@ -142,6 +152,24 @@ investments.patch("/:id", async (c) => {
   if (!Number.isFinite(currentP) || currentP < 0)
     throw new HTTPException(400, { message: "Current value must be a non-negative number" });
 
+  /*
+    Record the valuation before overwriting it. A holding used to keep only its
+    latest number, so every update destroyed the previous one and a value-over-
+    time chart was impossible however long you had been tracking.
+
+    Keyed by day: re-saving the same holding twice in one day corrects that
+    day's point rather than adding a second one, which is what someone fixing a
+    typo expects to happen.
+  */
+  const valuedOn = new Date().toISOString().slice(0, 10);
+  await c.env.DB.prepare(
+    `INSERT INTO investment_values (investment_id, user_id, value, recorded_on)
+     VALUES (?1, ?2, ?3, ?4)
+     ON CONFLICT (investment_id, recorded_on) DO UPDATE SET value = ?3`,
+  )
+    .bind(id, user.sub, currentP, valuedOn)
+    .run();
+
   const updated = await c.env.DB.prepare(
     `UPDATE investments
      SET name = ?, type = ?, invested_amount = ?, current_value = ?, notes = ?, updated_at = datetime('now')
@@ -164,6 +192,26 @@ investments.delete("/:id", async (c) => {
     .run();
   if (!res.meta.changes) throw new HTTPException(404, { message: "Investment not found" });
   return c.json({ ok: true });
+});
+
+/** GET /api/investments/:id/history — recorded valuations, oldest first. */
+investments.get("/:id/history", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT value, recorded_on FROM investment_values
+      WHERE investment_id = ? AND user_id = ?
+      ORDER BY recorded_on ASC
+      LIMIT 500`,
+  )
+    .bind(id, user.sub)
+    .all<{ value: number; recorded_on: string }>();
+
+  return c.json({
+    history: (results ?? []).map((r) => ({ value: r.value / 100, recorded_on: r.recorded_on })),
+  });
 });
 
 export default investments;

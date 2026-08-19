@@ -1,4 +1,10 @@
 import { useState, type ReactNode } from "react";
+
+/** Local calendar date — "today" must be the user's, not UTC's. */
+function todayIso(): string {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
 import { Loader2, Plus, Minus } from "lucide-react";
 import {
   Dialog,
@@ -27,6 +33,9 @@ export default function AddFundsDialog({
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"add" | "withdraw">("add");
   const [amount, setAmount] = useState("");
+  // Money is usually moved before it is logged, and the contribution history
+  // is only useful if it records when that actually happened.
+  const [occurredOn, setOccurredOn] = useState(todayIso);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -47,7 +56,7 @@ export default function AddFundsDialog({
     }
     setLoading(true);
     try {
-      await api.contributeGoal(goal.id, mode === "add" ? value : -value);
+      await api.contributeGoal(goal.id, mode === "add" ? value : -value, occurredOn);
       setOpen(false);
       reset();
       onDone?.();
@@ -127,6 +136,20 @@ export default function AddFundsDialog({
                 +₹{q.toLocaleString("en-IN")}
               </button>
             ))}
+          </div>
+
+          <div>
+            <label htmlFor="funds-date" className="text-sm font-medium">
+              Moved on
+            </label>
+            <input
+              id="funds-date"
+              type="date"
+              value={occurredOn}
+              max={todayIso()}
+              onChange={(e) => setOccurredOn(e.target.value || todayIso())}
+              className="mt-1.5 w-full rounded-lg border border-input bg-transparent px-3 py-2.5 outline-none focus:border-ring"
+            />
           </div>
 
           {error && (

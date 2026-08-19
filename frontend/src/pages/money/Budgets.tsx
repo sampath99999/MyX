@@ -1,5 +1,14 @@
 import { useCallback, useState } from "react";
-import { Plus, Target, Trash2, Loader2, Pencil, AlertTriangle } from "lucide-react";
+import {
+  Plus,
+  Target,
+  Trash2,
+  Loader2,
+  Pencil,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import BudgetDialog from "@/components/BudgetDialog";
@@ -19,16 +28,37 @@ function tone(percent: number, over: boolean) {
   return { bar: "bg-gradient-to-r from-emerald-500 to-emerald-400", text: "text-emerald-400" };
 }
 
+/** YYYY-MM for the user's local month, and the label people read. */
+function monthKey(offset = 0): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+}
+
 export default function Budgets() {
+  /*
+    Budgets were current-month only, so there was no way to see whether last
+    month actually went well — which is the only way to know a limit is doing
+    anything. Spend is derived from transactions, so any past month can be
+    reconstructed without storing it.
+  */
+  const [month, setMonth] = useState(monthKey);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const isCurrentMonth = month === monthKey();
 
   const load = useCallback(async () => {
-    const { budgets, totals } = await api.listBudgets();
+    const { budgets, totals } = await api.listBudgets(month);
     setBudgets(budgets);
     setTotals(totals);
-  }, []);
+  }, [month]);
 
   const { loading, error, reload } = useAuthenticatedLoad(load);
 
@@ -52,7 +82,34 @@ export default function Budgets() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Budgets</h2>
-          <p className="text-sm text-muted-foreground">Monthly spending limits by category</p>
+          <div className="mt-1 flex items-center gap-1">
+            <button
+              onClick={() => setMonth(monthKey(-1))}
+              title="Previous month"
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="min-w-[9rem] text-center text-sm text-muted-foreground">
+              {monthLabel(month)}
+            </span>
+            <button
+              onClick={() => setMonth(monthKey())}
+              disabled={isCurrentMonth}
+              title="Next month"
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            {!isCurrentMonth && (
+              <button
+                onClick={() => setMonth(monthKey())}
+                className="ml-1 text-xs text-primary hover:underline"
+              >
+                This month
+              </button>
+            )}
+          </div>
         </div>
         <BudgetDialog
           onSaved={reload}
@@ -100,7 +157,9 @@ export default function Budgets() {
             <Card className="glass p-5">
               <div className="flex items-baseline justify-between">
                 <div>
-                  <div className="text-sm text-muted-foreground">Spent this month</div>
+                  <div className="text-sm text-muted-foreground">
+                    Spent in {monthLabel(month).split(" ")[0]}
+                  </div>
                   <div className="mt-0.5 text-2xl font-bold tracking-tight">
                     {formatMoney(totals.spent)}{" "}
                     <span className="text-base font-medium text-muted-foreground">
