@@ -244,26 +244,27 @@ describe("REQUIRE_VERIFIED_EMAIL", () => {
     expect(res.status).toBe(200);
   });
 
-  it("blocks an unverified account when the gate is on", async () => {
+  it("still lets an unverified account sign in when the gate is on", async () => {
+    /*
+      The gate must not block the door. Entering a code needs a session, so a
+      rejected login would leave the account permanently unverifiable — the
+      trap this test exists to prevent from coming back.
+    */
     await signUp(makeApp());
     const gated = makeApp({ REQUIRE_VERIFIED_EMAIL: "true" });
     const res = await gated("/api/auth/login", {
       email: NEW_USER.email,
       password: NEW_USER.password,
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
   });
 
-  it("lets a verified account through the gate", async () => {
-    const request = makeApp();
-    const { token } = await signUp(request);
-    await request("/api/auth/verify-email", { code: codeFromEmail() }, token);
-
+  it("keeps /api/auth reachable so the code can still be entered", async () => {
     const gated = makeApp({ REQUIRE_VERIFIED_EMAIL: "true" });
-    const res = await gated("/api/auth/login", {
-      email: NEW_USER.email,
-      password: NEW_USER.password,
-    });
-    expect(res.status).toBe(200);
+    const { token } = await signUp(gated);
+
+    expect((await gated("/api/auth/verify-email/resend", {}, token)).status).toBe(200);
+    const verified = await gated("/api/auth/verify-email", { code: codeFromEmail() }, token);
+    expect(verified.status).toBe(200);
   });
 });

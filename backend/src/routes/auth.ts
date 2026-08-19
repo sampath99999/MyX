@@ -184,15 +184,12 @@ auth.post("/login", async (c) => {
   }
 
   /*
-    Off by default. Turning this on before the sending domain is verified would
-    lock out everyone who signed up while the codes were going nowhere, so it is
-    a deliberate switch rather than the default behaviour.
+    Sign-in deliberately succeeds even when the address is unverified. Blocking
+    here would be a trap: entering the code needs a session, so a rejected login
+    leaves the account permanently unverifiable. REQUIRE_VERIFIED_EMAIL is
+    enforced on the data routes instead (see middleware.ts), which stops an
+    unverified account from using MyX without stranding it.
   */
-  if (c.env.REQUIRE_VERIFIED_EMAIL === "true" && !user.email_verified) {
-    throw new HTTPException(403, {
-      message: "Confirm your email address before signing in. Check your inbox for the code.",
-    });
-  }
 
   const token = await signToken(user, c.env.JWT_SECRET);
   return c.json({

@@ -45,6 +45,9 @@
     // everyone except the very first account (see routes/auth.ts).
     "REGISTRATION_OPEN": "true",
     "APP_URL": "https://myx.samchitech.com",
-    "EMAIL_FROM": "noreply@samchitech.com"
+    "EMAIL_FROM": "noreply@samchitech.com",
+    // Enforced on the data routes, not on login — see middleware.ts. Sign-in and
+    // /api/auth/* stay open so an unverified account can still enter its code.
+    "REQUIRE_VERIFIED_EMAIL": "true"
   }
 }
