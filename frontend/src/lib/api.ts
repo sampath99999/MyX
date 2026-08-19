@@ -85,6 +85,8 @@ export interface User {
   name: string;
   /** Absent on responses from before verification shipped; treated as verified. */
   email_verified?: boolean;
+  /** Daily digest opt-in. Absent on responses predating the feature. */
+  digest_enabled?: boolean;
   created_at?: string;
 }
 
@@ -116,6 +118,12 @@ export const api = {
    * alone left it valid until expiry.
    */
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
+
+  setPreferences: (body: { digest_enabled: boolean }) =>
+    request<{ ok: true; digest_enabled: boolean }>("/api/auth/preferences", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   verifyEmail: (body: { code: string }) =>
     request<{ ok: true; email_verified: true }>("/api/auth/verify-email", {

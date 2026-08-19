@@ -216,7 +216,7 @@ auth.post("/login", async (c) => {
 auth.get("/me", requireAuth, async (c) => {
   const payload = c.get("user");
   const user = await c.env.DB.prepare(
-    "SELECT id, email, name, token_version, email_verified, created_at FROM users WHERE id = ?",
+    "SELECT id, email, name, token_version, email_verified, digest_enabled, created_at FROM users WHERE id = ?",
   )
     .bind(payload.sub)
     .first<{
@@ -225,6 +225,7 @@ auth.get("/me", requireAuth, async (c) => {
       name: string;
       token_version: number;
       email_verified: number;
+      digest_enabled: number;
       created_at: string;
     }>();
   if (!user) throw new HTTPException(404, { message: "User not found" });
@@ -235,6 +236,7 @@ auth.get("/me", requireAuth, async (c) => {
       email: user.email,
       name: user.name,
       email_verified: Boolean(user.email_verified),
+      digest_enabled: Boolean(user.digest_enabled),
       created_at: user.created_at,
     },
   };
@@ -484,6 +486,27 @@ auth.post("/verify-email/resend", requireAuth, async (c) => {
 
   await issueVerificationCode(c.env, user.id, user.email);
   return c.json({ ok: true, email_verified: false });
+});
+
+/**
+ * PATCH /api/auth/preferences — currently just the daily digest opt-out.
+ *
+ * A reminder that lands in someone's mailbox needs a switch that is one click
+ * away, not a support request.
+ */
+auth.patch("/preferences", requireAuth, async (c) => {
+  const payload = c.get("user");
+  const body = await c.req.json().catch(() => null);
+
+  if (typeof body?.digest_enabled !== "boolean") {
+    throw new HTTPException(400, { message: "digest_enabled must be true or false" });
+  }
+
+  await c.env.DB.prepare("UPDATE users SET digest_enabled = ? WHERE id = ?")
+    .bind(body.digest_enabled ? 1 : 0, payload.sub)
+    .run();
+
+  return c.json({ ok: true, digest_enabled: body.digest_enabled });
 });
 
 export default auth;

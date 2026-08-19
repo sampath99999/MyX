@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { Loader2, ShieldAlert, Bell } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/lib/auth";
 import { api, ApiError, clearToken } from "@/lib/api";
@@ -13,7 +13,10 @@ import { api, ApiError, clearToken } from "@/lib/api";
   which stops a misclick on a phone.
 */
 export default function Settings() {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
+  // Undefined on sessions predating the feature; those accounts are opted in.
+  const [digest, setDigest] = useState(user?.digest_enabled !== false);
+  const [digestBusy, setDigestBusy] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmWord, setConfirmWord] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,6 +66,47 @@ export default function Settings() {
           <p className="mt-2 text-xs text-muted-foreground">
             Signing out revokes every token issued for this account, on all devices.
           </p>
+        </section>
+
+        <section className="rounded-2xl border border-border/60 p-6">
+          <div className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Daily digest</h2>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            One email each morning listing bills due, tasks due and budgets running out — and only
+            on days something is actually due. Quiet days send nothing.
+          </p>
+          <label className="mt-5 flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={digest}
+              disabled={digestBusy}
+              onChange={async (e) => {
+                const next = e.target.checked;
+                setDigest(next);
+                setDigestBusy(true);
+                try {
+                  await api.setPreferences({ digest_enabled: next });
+                  await refresh();
+                } catch {
+                  // Put the switch back rather than showing a state the server
+                  // does not agree with.
+                  setDigest(!next);
+                } finally {
+                  setDigestBusy(false);
+                }
+              }}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-sm">Send me the daily digest</span>
+            {digestBusy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          </label>
+          {user?.email_verified === false && (
+            <p className="mt-3 text-xs text-amber-300/80">
+              Confirm your email address first — digests only go to verified addresses.
+            </p>
+          )}
         </section>
 
         <section className="rounded-2xl border border-destructive/40 p-6">

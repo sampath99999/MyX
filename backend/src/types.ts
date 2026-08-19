@@ -36,6 +36,12 @@ export interface Env {
   };
   /** From address for outgoing mail; must be on an onboarded domain. */
   EMAIL_FROM?: string;
+  /**
+   * Minutes east of UTC used to decide the digest's "today". Defaults to 330
+   * (IST) — the app deals in rupees, and its users' day does not start at UTC
+   * midnight.
+   */
+  DIGEST_TZ_OFFSET_MINUTES?: string;
   /** Public origin, used to build password-reset links. */
   APP_URL?: string;
   /**

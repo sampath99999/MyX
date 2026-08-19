@@ -1,3 +1,4 @@
+import { sendDailyDigests } from "./digest";
 import type { Env } from "../types";
 
 /*
@@ -17,7 +18,9 @@ import type { Env } from "../types";
 const STORAGE_WARN_BYTES = 4 * 1024 * 1024 * 1024; // 4 GB of the 5 GB limit
 
 export interface UsageReport {
+  /** 0 when D1 refuses the pragma — see collectUsage. */
   bytes: number;
+  sizeAvailable: boolean;
   users: number;
   unverified: number;
   rows: number;
@@ -25,11 +28,24 @@ export interface UsageReport {
 }
 
 export async function collectUsage(db: D1Database): Promise<UsageReport> {
-  // page_count * page_size is what SQLite itself believes the file weighs —
-  // the only storage figure available from inside a query.
-  const size = await db
-    .prepare("SELECT (SELECT * FROM pragma_page_count()) * (SELECT * FROM pragma_page_size()) AS bytes")
-    .first<{ bytes: number }>();
+  /*
+    page_count * page_size is what SQLite believes the file weighs, but D1
+    rejects the pragma functions with SQLITE_AUTH — this threw on every run and,
+    because it ran first, took the rest of the daily job down with it. Storage is
+    therefore best-effort: the row counts below are the part that always works,
+    and the real number is on the D1 dashboard.
+  */
+  let bytes = 0;
+  let sizeAvailable = false;
+  try {
+    const size = await db
+      .prepare("SELECT (SELECT * FROM pragma_page_count()) * (SELECT * FROM pragma_page_size()) AS bytes")
+      .first<{ bytes: number }>();
+    bytes = size?.bytes ?? 0;
+    sizeAvailable = true;
+  } catch {
+    // Expected on D1. Not worth a log line every day.
+  }
 
   const counts = await db
     .prepare(
@@ -48,12 +64,12 @@ export async function collectUsage(db: D1Database): Promise<UsageReport> {
       notes: number;
     }>();
 
-  const bytes = size?.bytes ?? 0;
   const rows =
     (counts?.transactions ?? 0) + (counts?.tasks ?? 0) + (counts?.notes ?? 0);
 
   return {
     bytes,
+    sizeAvailable,
     users: counts?.users ?? 0,
     unverified: counts?.unverified ?? 0,
     rows,
@@ -81,17 +97,52 @@ export async function pruneVerificationCodes(db: D1Database): Promise<number> {
   return result.meta?.changes ?? 0;
 }
 
-export async function runDailyMaintenance(env: Env): Promise<UsageReport> {
-  const swept = (await pruneResetTokens(env.DB)) + (await pruneVerificationCodes(env.DB));
-  const usage = await collectUsage(env.DB);
+/*
+  Each step is isolated. The first version chained them, so the storage pragma
+  failing on D1 meant no sweep, no usage line and no digests — one unsupported
+  query silently disabled the entire scheduled job.
+*/
+export async function runDailyMaintenance(env: Env): Promise<UsageReport | null> {
+  let swept = 0;
+  try {
+    swept = (await pruneResetTokens(env.DB)) + (await pruneVerificationCodes(env.DB));
+  } catch (err) {
+    console.error("[usage] sweep failed:", err);
+  }
 
-  const mb = (usage.bytes / (1024 * 1024)).toFixed(1);
-  const line = `[usage] ${mb} MB · ${usage.users} users (${usage.unverified} unverified) · ${usage.rows} content rows · ${swept} expired codes swept`;
+  let usage: UsageReport | null = null;
+  try {
+    usage = await collectUsage(env.DB);
+    const size = usage.sizeAvailable ? `${(usage.bytes / (1024 * 1024)).toFixed(1)} MB · ` : "";
+    const line = `[usage] ${size}${usage.users} users (${usage.unverified} unverified) · ${usage.rows} content rows · ${swept} expired codes swept`;
 
-  if (usage.overStorageWarning) {
-    console.error(`${line} — STORAGE OVER 4 GB, D1 free tier stops writes at 5 GB`);
-  } else {
-    console.log(line);
+    if (usage.overStorageWarning) {
+      console.error(`${line} — STORAGE OVER 4 GB, D1 free tier stops writes at 5 GB`);
+    } else {
+      console.log(line);
+    }
+  } catch (err) {
+    console.error("[usage] collection failed:", err);
+  }
+
+  /*
+    Digests run on the same tick. Deliberately after the sweep and the usage
+    read, and deliberately caught: a mail problem must not stop the housekeeping
+    that keeps the database bounded.
+  */
+  try {
+    const digest = await sendDailyDigests(env);
+    console.log(
+      `[digest] ${digest.sent} sent · ${digest.skipped} skipped (nothing due or already sent)`,
+    );
+    // Caps that bite are announced. A silently truncated run looks like a quiet
+    // day, which is exactly the wrong impression.
+    if (digest.capped) console.warn("[digest] hit the per-run send cap — some users got nothing");
+    if (digest.truncated.length) {
+      console.warn(`[digest] row cap hit for: ${digest.truncated.join(", ")}`);
+    }
+  } catch (err) {
+    console.error("[digest] failed:", err);
   }
 
   return usage;
