@@ -164,6 +164,22 @@ export const api = {
         notes: number;
         checklists: number;
       };
+      /** Latest transactions, newest first. Amounts in rupees. */
+      recent: {
+        id: number;
+        type: "income" | "expense";
+        amount: number;
+        category: string;
+        note: string | null;
+        occurred_on: string;
+      }[];
+      /** The user's first checklist with up to 6 items; null when none exist. */
+      checklist: {
+        id: number;
+        name: string;
+        emoji: string | null;
+        items: { id: number; title: string; done: boolean }[];
+      } | null;
     }>("/api/dashboard/summary"),
 
   // ----- Money -----

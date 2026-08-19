@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   ListChecks,
   ArrowDownLeft,
+  ArrowUpRight,
+  Check,
   Plus,
   ArrowRight,
 } from "lucide-react";
@@ -18,6 +20,22 @@ import { useAuth } from "@/lib/auth";
 import { api, formatMoney } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 
+interface RecentTransaction {
+  id: number;
+  type: "income" | "expense";
+  amount: number;
+  category: string;
+  note: string | null;
+  occurred_on: string;
+}
+
+interface DashboardChecklist {
+  id: number;
+  name: string;
+  emoji: string | null;
+  items: { id: number; title: string; done: boolean }[];
+}
+
 interface Summary {
   greeting: string;
   stats: {
@@ -27,6 +45,16 @@ interface Summary {
     notes: number;
     checklists: number;
   };
+  recent: RecentTransaction[];
+  checklist: DashboardChecklist | null;
+}
+
+/** "5 Aug" — enough to place a transaction without the noise of a full date. */
+function shortDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
 export default function Dashboard() {
@@ -38,6 +66,34 @@ export default function Dashboard() {
   }, []);
 
   const { error, reload } = useAuthenticatedLoad(load);
+
+  /*
+    Ticking an item updates locally first. The dashboard is a glance surface —
+    waiting on a round trip before the checkbox moves would make it feel broken
+    — and a failed write is reconciled by reloading the real state.
+  */
+  async function toggleItem(itemId: number, done: boolean) {
+    const checklist = summary?.checklist;
+    if (!checklist) return;
+
+    setSummary((prev) =>
+      prev && prev.checklist
+        ? {
+            ...prev,
+            checklist: {
+              ...prev.checklist,
+              items: prev.checklist.items.map((i) => (i.id === itemId ? { ...i, done } : i)),
+            },
+          }
+        : prev,
+    );
+
+    try {
+      await api.updateChecklistItem(checklist.id, itemId, { done });
+    } catch {
+      reload();
+    }
+  }
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
 
@@ -149,34 +205,124 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Recent activity</h3>
               <Link
-                to="/money"
+                to="/money/transactions"
                 className="text-xs text-primary hover:underline underline-offset-4"
               >
                 View money →
               </Link>
             </div>
-            <div className="mt-8 flex flex-col items-center justify-center gap-3 py-8 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                <Sparkles className="h-6 w-6 text-primary" />
+            {summary && summary.recent.length === 0 ? (
+              <div className="mt-8 flex flex-col items-center justify-center gap-3 py-8 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                  <Sparkles className="h-6 w-6 text-primary" />
+                </div>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Head to the Money module to log income and expenses — your balance updates here
+                  instantly.
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground max-w-xs">
-                Head to the Money module to log income and expenses — your balance updates here
-                instantly.
-              </p>
-            </div>
+            ) : (
+              <ul className="mt-4 divide-y divide-border/40">
+                {(summary?.recent ?? []).map((t) => (
+                  <li key={t.id} className="flex items-center gap-3 py-2.5">
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                        t.type === "income"
+                          ? "bg-emerald-400/15 text-emerald-300"
+                          : "bg-rose-400/15 text-rose-300"
+                      }`}
+                    >
+                      {t.type === "income" ? (
+                        <ArrowUpRight className="h-4 w-4" />
+                      ) : (
+                        <ArrowDownLeft className="h-4 w-4" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{t.note || t.category}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {t.category} · {shortDate(t.occurred_on)}
+                      </div>
+                    </div>
+                    <div
+                      className={`shrink-0 text-sm font-semibold tabular-nums ${
+                        t.type === "income" ? "text-emerald-300" : "text-foreground/80"
+                      }`}
+                    >
+                      {t.type === "income" ? "+" : "−"}
+                      {formatMoney(t.amount)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <Card className="glass p-6 min-h-56">
-            <h3 className="font-semibold">Before bed checklist</h3>
-            <p className="text-xs text-muted-foreground">A preview of the Checklists module</p>
-            <ul className="mt-4 space-y-2.5">
-              {["Lock the door", "Set alarm", "Phone on charge", "Fill water bottle"].map((t) => (
-                <li key={t} className="flex items-center gap-3 text-sm">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-md border border-border" />
-                  <span className="text-muted-foreground">{t}</span>
-                </li>
-              ))}
-            </ul>
+            {summary?.checklist ? (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="truncate font-semibold">
+                    {summary.checklist.emoji ? `${summary.checklist.emoji} ` : ""}
+                    {summary.checklist.name}
+                  </h3>
+                  <Link
+                    to={`/checklists/${summary.checklist.id}`}
+                    className="shrink-0 text-xs text-primary hover:underline underline-offset-4"
+                  >
+                    Open →
+                  </Link>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {summary.checklist.items.filter((i) => i.done).length} of{" "}
+                  {summary.checklist.items.length} done
+                </p>
+                <ul className="mt-4 space-y-2.5">
+                  {summary.checklist.items.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        onClick={() => toggleItem(item.id, !item.done)}
+                        className="flex w-full items-center gap-3 text-left text-sm"
+                      >
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                            item.done ? "border-primary bg-primary" : "border-border"
+                          }`}
+                        >
+                          {item.done && <Check className="h-3 w-3 text-primary-foreground" />}
+                        </span>
+                        <span
+                          className={
+                            item.done ? "text-muted-foreground line-through" : "text-foreground"
+                          }
+                        >
+                          {item.title}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <>
+                <h3 className="font-semibold">Checklists</h3>
+                <p className="text-xs text-muted-foreground">Routines you run again and again</p>
+                <div className="mt-8 flex flex-col items-center justify-center gap-3 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                    <ListChecks className="h-6 w-6 text-primary" />
+                  </div>
+                  <p className="max-w-xs text-sm text-muted-foreground">
+                    Build one for the things you always forget — leaving home, travel packing.
+                  </p>
+                  <Link
+                    to="/checklists"
+                    className="text-sm font-medium text-primary hover:underline underline-offset-4"
+                  >
+                    Create a checklist →
+                  </Link>
+                </div>
+              </>
+            )}
           </Card>
         </div>
       </div>

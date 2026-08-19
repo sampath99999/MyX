@@ -91,6 +91,46 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
     .bind(user.sub)
     .first<{ open_tasks: number; notes: number; checklists: number }>();
 
+  /*
+    The two dashboard panels. Both were shipped as hardcoded placeholder markup
+    when the shell predated the modules, and stayed that way after the modules
+    existed — "Recent activity" showed an empty state over any amount of data,
+    and the checklist card showed four fake items. Fetched here rather than as
+    separate calls so the dashboard stays one round trip.
+  */
+  const recent = await c.env.DB.prepare(
+    `SELECT id, type, amount, category, note, occurred_on FROM transactions
+      WHERE user_id = ?1 ORDER BY occurred_on DESC, id DESC LIMIT 5`,
+  )
+    .bind(user.sub)
+    .all<{
+      id: number;
+      type: string;
+      amount: number;
+      category: string;
+      note: string | null;
+      occurred_on: string;
+    }>();
+
+  // The user's first checklist (their own ordering), with its items — the card
+  // is a live tick-off surface, not a preview.
+  const checklist = await c.env.DB.prepare(
+    `SELECT id, name, emoji FROM checklists WHERE user_id = ? ORDER BY position, id LIMIT 1`,
+  )
+    .bind(user.sub)
+    .first<{ id: number; name: string; emoji: string | null }>();
+
+  const checklistItems = checklist
+    ? (
+        await c.env.DB.prepare(
+          `SELECT id, title, done FROM checklist_items
+            WHERE checklist_id = ? ORDER BY position, id LIMIT 6`,
+        )
+          .bind(checklist.id)
+          .all<{ id: number; title: string; done: number }>()
+      ).results ?? []
+    : [];
+
   const balance = ((money?.income ?? 0) - (money?.expense ?? 0)) / 100;
   const monthSpend = (money?.month_expense ?? 0) / 100;
 
@@ -103,6 +143,13 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
       notes: counts?.notes ?? 0,
       checklists: counts?.checklists ?? 0,
     },
+    recent: (recent.results ?? []).map((t) => ({ ...t, amount: t.amount / 100 })),
+    checklist: checklist
+      ? {
+          ...checklist,
+          items: checklistItems.map((i) => ({ ...i, done: Boolean(i.done) })),
+        }
+      : null,
   });
 });
 
