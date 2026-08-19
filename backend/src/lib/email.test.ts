@@ -16,8 +16,6 @@ function envWith(overrides: Partial<Env>): Env {
   return { EMAIL_FROM: "noreply@samchitech.com", ...overrides } as Env;
 }
 
-let fetchSpy: ReturnType<typeof vi.spyOn>;
-
 beforeEach(() => {
   // Quiet the deliberate console.error/warn on the failure paths.
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -27,7 +25,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("sendEmail transport selection", () => {
   it("uses Resend when a key is present", async () => {
-    fetchSpy = vi
+    const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(JSON.stringify({ id: "abc" }), { status: 200 }));
 
@@ -48,7 +46,7 @@ describe("sendEmail transport selection", () => {
 
   it("prefers Resend over the binding when both are configured", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
 
     const result = await sendEmail(
       envWith({ RESEND_API_KEY: "re_test_key", EMAIL: { send } as unknown as Env["EMAIL"] }),
