@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Sparkles,
   Wallet,
@@ -75,6 +75,26 @@ const rail = [
 
 export default function AppPreview() {
   const [shotFailed, setShotFailed] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  /*
+    onError alone is not enough on this page.
+
+    The hero is prerendered, so the browser starts fetching the screenshot while
+    parsing the HTML — long before React hydrates and attaches any handler. When
+    the file is missing the failure has already happened by then and the event is
+    gone, leaving a broken-image icon sitting in the hero with the fallback never
+    triggered. Asking the element whether it finished with no dimensions catches
+    exactly that case.
+
+    Worth knowing why the request "succeeds": Pages answers a missing path with
+    the SPA shell at 200, so the browser receives HTML where an image should be
+    rather than a 404.
+  */
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth === 0) setShotFailed(true);
+  }, []);
 
   return (
     <div className="app-frame overflow-hidden rounded-2xl">
@@ -90,6 +110,7 @@ export default function AppPreview() {
 
       {!shotFailed ? (
         <img
+          ref={imgRef}
           src="/hero-app.png"
           alt="The MyX money dashboard, showing balance, income, savings rate and six months of cash flow"
           width={1440}
