@@ -111,7 +111,7 @@ export default function AppPreview() {
       {!shotFailed ? (
         <img
           ref={imgRef}
-          src="/hero-app.png"
+          src="/hero-app.webp"
           alt="The MyX money dashboard, showing balance, income, savings rate and six months of cash flow"
           width={1440}
           height={900}

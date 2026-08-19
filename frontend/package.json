@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/prerender.mjs",
+    "build": "node scripts/optimize-hero.mjs && tsc -b && vite build && node scripts/prerender.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler pages deploy dist --project-name myx-app --branch main --commit-dirty=true",
     "test": "vitest run",

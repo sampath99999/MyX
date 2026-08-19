@@ -3,3 +3,8 @@ dist/
 .wrangler/
 *.log
 .DS_Store
+
+# Raw hero screenshots. Only the generated hero-app.webp is committed —
+# see scripts/optimize-hero.mjs.
+public/hero-app.png
+screenshots/
