@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { requireAuth } from "../middleware";
 import type { AppBindings } from "../types";
@@ -34,27 +34,158 @@ function serialize(row: TxRow) {
 
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
 
-/** GET /api/transactions?limit=&offset=&type= — list, newest first. */
+/**
+ * The ways the ledger can be sorted, and the SQL each one means.
+ *
+ * An allowlist rather than an interpolated column name: this ends up inside an
+ * ORDER BY, which cannot be parameterised, so the value must never come from
+ * the request except as a key into this object.
+ *
+ * Every clause ends in `id` — without a tiebreak, two rows on the same date
+ * come back in whatever order SQLite feels like, and a stable order is what
+ * makes LIMIT/OFFSET paging trustworthy.
+ */
+const SORTS = {
+  date_desc: "occurred_on DESC, id DESC",
+  date_asc: "occurred_on ASC, id ASC",
+  amount_desc: "amount DESC, id DESC",
+  amount_asc: "amount ASC, id ASC",
+} as const;
+
+type Sort = keyof typeof SORTS;
+
+/** Escapes LIKE's own wildcards so a literal % is not a match-everything. */
+const likeTerm = (raw: string) => `%${raw.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+
+/**
+ * Builds the WHERE clause shared by the list and its totals.
+ *
+ * Both have to agree exactly. When the filters lived only in the list query the
+ * summary strip above it described the whole account instead of the rows on
+ * screen, which is a quietly wrong number — the worst kind on a money screen.
+ */
+function buildFilters(c: Context<AppBindings>, userId: number) {
+  const clauses = ["user_id = ?"];
+  const binds: unknown[] = [userId];
+
+  const type = c.req.query("type");
+  if (type === "income" || type === "expense") {
+    clauses.push("type = ?");
+    binds.push(type);
+  }
+
+  const from = c.req.query("from");
+  if (from && dateRe.test(from)) {
+    clauses.push("occurred_on >= ?");
+    binds.push(from);
+  }
+
+  const to = c.req.query("to");
+  if (to && dateRe.test(to)) {
+    clauses.push("occurred_on <= ?");
+    binds.push(to);
+  }
+
+  const category = c.req.query("category");
+  if (category) {
+    clauses.push("category = ?");
+    binds.push(category);
+  }
+
+  const q = (c.req.query("q") ?? "").trim();
+  if (q) {
+    clauses.push("(note LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\')");
+    binds.push(likeTerm(q), likeTerm(q));
+  }
+
+  // Sent in rupees, like every other amount on the wire; compared in paise,
+  // which is what the column holds.
+  const min = Number(c.req.query("min"));
+  if (Number.isFinite(min) && c.req.query("min") !== undefined && c.req.query("min") !== "") {
+    clauses.push("amount >= ?");
+    binds.push(toPaise(min));
+  }
+
+  const max = Number(c.req.query("max"));
+  if (Number.isFinite(max) && c.req.query("max") !== undefined && c.req.query("max") !== "") {
+    clauses.push("amount <= ?");
+    binds.push(toPaise(max));
+  }
+
+  return { where: clauses.join(" AND "), binds };
+}
+
+/**
+ * GET /api/transactions — the ledger, filtered.
+ *
+ * Query: limit, offset, type, from, to, category, q, min, max, sort.
+ *
+ * Filtering is here rather than in the browser because the page only ever holds
+ * a page of rows. "Show me last March" applied to the most recent hundred
+ * silently answers a different question, and looks like missing data.
+ */
 tx.get("/", async (c) => {
   const user = c.get("user");
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
   const offset = Math.max(Number(c.req.query("offset") ?? 0), 0);
-  const type = c.req.query("type");
+  const sortKey = c.req.query("sort") as Sort | undefined;
+  const order = SORTS[sortKey ?? "date_desc"] ?? SORTS.date_desc;
 
-  let sql =
-    "SELECT id, type, amount, category, note, occurred_on, created_at FROM transactions WHERE user_id = ?";
-  const binds: unknown[] = [user.sub];
-  if (type === "income" || type === "expense") {
-    sql += " AND type = ?";
-    binds.push(type);
-  }
-  sql += " ORDER BY occurred_on DESC, id DESC LIMIT ? OFFSET ?";
-  binds.push(limit, offset);
+  const { where, binds } = buildFilters(c, user.sub);
 
-  const { results } = await c.env.DB.prepare(sql)
-    .bind(...binds)
-    .all<TxRow>();
-  return c.json({ transactions: (results ?? []).map(serialize) });
+  const [list, totals] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT id, type, amount, category, note, occurred_on, created_at
+         FROM transactions WHERE ${where}
+        ORDER BY ${order} LIMIT ? OFFSET ?`,
+    ).bind(...binds, limit, offset),
+
+    // Totals for the whole filtered set, not just this page — otherwise the
+    // strip above the list changes every time you scroll.
+    c.env.DB.prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN type='income'  THEN amount END), 0) AS income,
+         COALESCE(SUM(CASE WHEN type='expense' THEN amount END), 0) AS expense,
+         COUNT(*) AS matched
+       FROM transactions WHERE ${where}`,
+    ).bind(...binds),
+  ]);
+
+  const rows = (list.results ?? []) as unknown as TxRow[];
+  const sums = ((totals.results ?? [])[0] ?? {}) as unknown as {
+    income: number;
+    expense: number;
+    matched: number;
+  };
+
+  return c.json({
+    transactions: rows.map(serialize),
+    totals: {
+      income: toRupees(sums.income ?? 0),
+      expense: toRupees(sums.expense ?? 0),
+      net: toRupees((sums.income ?? 0) - (sums.expense ?? 0)),
+      matched: sums.matched ?? 0,
+    },
+  });
+});
+
+/**
+ * GET /api/transactions/categories — the categories actually in use.
+ *
+ * The category picker offers a fixed list; this is what the account has really
+ * spent under, which is what a filter should offer. Nobody wants to filter by a
+ * category with nothing in it.
+ */
+tx.get("/categories", async (c) => {
+  const user = c.get("user");
+  const { results } = await c.env.DB.prepare(
+    `SELECT category, COUNT(*) AS n FROM transactions
+      WHERE user_id = ? GROUP BY category ORDER BY n DESC, category`,
+  )
+    .bind(user.sub)
+    .all<{ category: string; n: number }>();
+
+  return c.json({ categories: results ?? [] });
 });
 
 /** GET /api/transactions/summary — balance + totals (all-time and this month). */

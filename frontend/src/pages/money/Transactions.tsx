@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Plus,
@@ -7,8 +7,6 @@ import {
   Wallet,
   Upload,
   Loader2,
-  Search,
-  X,
   ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,9 +14,16 @@ import { Card } from "@/components/ui/card";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import ImportStatementDialog from "@/components/ImportStatementDialog";
 import TransactionDetailsDialog from "@/components/TransactionDetailsDialog";
+import TransactionFilters from "@/components/TransactionFilters";
 import LoadError from "@/components/LoadError";
 import { getCategoryIcon } from "@/components/CategoryPicker";
-import { api, formatMoney, type Transaction } from "@/lib/api";
+import {
+  api,
+  formatMoney,
+  type Transaction,
+  type TransactionQuery,
+  type TransactionTotals,
+} from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 
 /*
@@ -27,13 +32,18 @@ import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
   The old list got three things wrong. It led with the category and demoted the
   note, so a row read "Health · Pharmacy" when the useful word was Pharmacy and
   the category was the metadata. It repeated the full date on every row, which
-  is noise on the ninth entry of the same day. And its edit and delete buttons
+  is noise by the ninth entry of the same day. And its edit and delete buttons
   only appeared on hover, so on a phone they did not exist at all.
 
   This groups by day with a running total per day, leads with what the money was
   actually for, and moves editing into the row's own screen — which is a real
-  address now (/money/transactions/:id), so it works by touch, by link and by
-  back button.
+  address (/money/transactions/:id), so it works by touch, by link and by back
+  button.
+
+  Filtering is done by the database, not over the rows already on screen. The
+  page holds one slice of the history; filtering that slice would answer "last
+  March" with whatever part of last March happened to be loaded, which is worse
+  than not offering the filter.
 */
 
 const PAGE_SIZE = 100;
@@ -59,21 +69,12 @@ function dayLabel(iso: string): string {
   });
 }
 
-type Filter = "all" | "income" | "expense";
-
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "income", label: "Income" },
-  { value: "expense", label: "Expenses" },
-];
-
 export default function Transactions() {
-  const [summary, setSummary] = useState<{ count: number } | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filter, setFilter] = useState<Filter>("all");
-  const [query, setQuery] = useState("");
+  const [totals, setTotals] = useState<TransactionTotals | null>(null);
+  const [categories, setCategories] = useState<{ category: string; n: number }[]>([]);
+  const [query, setQuery] = useState<TransactionQuery>({});
   const [loadingMore, setLoadingMore] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
 
   /*
     The details modal is driven by the URL, not by state: /money/transactions/:id
@@ -86,50 +87,40 @@ export default function Transactions() {
   const openId = id != null && /^\d+$/.test(id) ? Number(id) : null;
 
   const load = useCallback(async () => {
-    const [s, t] = await Promise.all([
-      api.moneySummary(),
-      api.listTransactions({ limit: PAGE_SIZE }),
-    ]);
-    setSummary(s);
-    setTransactions(t.transactions);
-    setExhausted(t.transactions.length < PAGE_SIZE);
-  }, []);
+    const res = await api.listTransactions({ ...query, limit: PAGE_SIZE, offset: 0 });
+    setTransactions(res.transactions);
+    setTotals(res.totals);
+  }, [query]);
 
   const { loading, error, reload } = useAuthenticatedLoad(load);
+
+  // The category list follows the data, not the filters — a filter that only
+  // offers the categories currently visible cannot be used to change the view.
+  useEffect(() => {
+    api
+      .transactionCategories()
+      .then((res) => setCategories(res.categories))
+      .catch(() => setCategories([]));
+  }, []);
 
   async function loadMore() {
     setLoadingMore(true);
     try {
-      const res = await api.listTransactions({ limit: PAGE_SIZE, offset: transactions.length });
+      const res = await api.listTransactions({
+        ...query,
+        limit: PAGE_SIZE,
+        offset: transactions.length,
+      });
       setTransactions((prev) => [...prev, ...res.transactions]);
-      if (res.transactions.length < PAGE_SIZE) setExhausted(true);
     } finally {
       setLoadingMore(false);
     }
   }
 
-  /*
-    Filtering is client-side over what is loaded, and says so below rather than
-    pretending to have searched the whole history. Doing it on the server would
-    mean a round trip per keystroke for a list that is already in memory.
-  */
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return transactions.filter((t) => {
-      if (filter !== "all" && t.type !== filter) return false;
-      if (!q) return true;
-      return (
-        t.category.toLowerCase().includes(q) ||
-        (t.note ?? "").toLowerCase().includes(q) ||
-        String(t.amount).includes(q)
-      );
-    });
-  }, [transactions, filter, query]);
-
-  /** Day buckets, in the order the API returned them (newest first). */
+  /** Day buckets, in whatever order the sort returned. */
   const days = useMemo(() => {
     const groups: { date: string; items: Transaction[]; net: number }[] = [];
-    for (const t of visible) {
+    for (const t of transactions) {
       let group = groups[groups.length - 1];
       if (!group || group.date !== t.occurred_on) {
         group = { date: t.occurred_on, items: [], net: 0 };
@@ -139,28 +130,92 @@ export default function Transactions() {
       group.net += t.type === "income" ? t.amount : -t.amount;
     }
     return groups;
-  }, [visible]);
+  }, [transactions]);
 
-  const totals = useMemo(() => {
-    let income = 0;
-    let expense = 0;
-    for (const t of visible) {
-      if (t.type === "income") income += t.amount;
-      else expense += t.amount;
-    }
-    return { income, expense, net: income - expense };
-  }, [visible]);
+  /*
+    Counting keys is not enough: clearing a range leaves `{ from: undefined }`
+    behind, and that would read as "filtered" — turning the empty state into
+    "nothing matches those filters" for an account that simply has none yet.
+  */
+  const filtered = Object.values(query).some((v) => v != null && v !== "");
+  const moreToLoad = totals != null && transactions.length < totals.matched;
 
-  const filtering = filter !== "all" || query.trim().length > 0;
+  /*
+    Grouping by day only reads as grouping when the rows arrive in date order.
+    Sorted by amount they do not, so the day headers are dropped and the date
+    moves back onto each row.
+  */
+  const grouped = !query.sort || query.sort.startsWith("date");
+
+  const rows = (items: Transaction[], showDate: boolean) => (
+    <Card className="glass overflow-hidden">
+      <ul className="divide-y divide-border/50">
+        {items.map((t) => {
+          const income = t.type === "income";
+          const Icon = getCategoryIcon(t.category);
+          return (
+            <li key={t.id}>
+              {/*
+                The whole row is the link. Edit and delete used to sit here
+                behind a hover state, which made them unreachable by touch; they
+                live on the row's own screen now, one tap away.
+              */}
+              <Link
+                to={`/money/transactions/${t.id}`}
+                className="flex items-center gap-3.5 px-4 py-3 transition-colors hover:bg-accent/40 sm:px-5"
+              >
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                    income ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"
+                  }`}
+                >
+                  <Icon className="h-[1.1rem] w-[1.1rem]" />
+                </span>
+
+                <span className="min-w-0 flex-1">
+                  {/* The note leads: it is what the money was for. The category
+                      is how it is classified, which is a detail — the old row
+                      had these the wrong way up. */}
+                  <span className="block truncate text-sm font-medium">
+                    {t.note?.trim() || t.category}
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="truncate rounded bg-muted/60 px-1.5 py-0.5">{t.category}</span>
+                    {showDate && <span className="shrink-0">{dayLabel(t.occurred_on)}</span>}
+                  </span>
+                </span>
+
+                <span
+                  className={`shrink-0 text-sm font-semibold tabular-nums ${
+                    income ? "text-emerald-400" : "text-foreground"
+                  }`}
+                >
+                  {income ? "+" : "−"}
+                  {formatMoney(t.amount)}
+                </span>
+
+                {income ? (
+                  <ArrowUpRight className="h-4 w-4 shrink-0 text-emerald-400/50" />
+                ) : (
+                  <ArrowDownLeft className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+                )}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
 
   return (
     <div className="space-y-5 p-6 lg:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Transactions</h2>
-          {summary && (
+          {totals && (
             <p className="text-sm text-muted-foreground">
-              {summary.count.toLocaleString("en-IN")} total entries
+              {totals.matched.toLocaleString("en-IN")}
+              {filtered ? " matching" : " total"} {totals.matched === 1 ? "entry" : "entries"}
             </p>
           )}
         </div>
@@ -187,8 +242,10 @@ export default function Transactions() {
         </div>
       </div>
 
-      {/* ---- What the rows below add up to ---- */}
-      {!loading && !error && transactions.length > 0 && (
+      <TransactionFilters query={query} onChange={setQuery} categories={categories} />
+
+      {/* What the filtered set adds up to — the whole set, not this page. */}
+      {totals && totals.matched > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: "In", value: totals.income, tone: "text-emerald-400" },
@@ -212,55 +269,6 @@ export default function Transactions() {
         </div>
       )}
 
-      {/* ---- Filters ---- */}
-      {!loading && !error && transactions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3">
-          <div role="radiogroup" aria-label="Type" className="flex rounded-lg border border-border/60 p-0.5">
-            {FILTERS.map((f) => (
-              <button
-                key={f.value}
-                role="radio"
-                aria-checked={filter === f.value}
-                onClick={() => setFilter(f.value)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  filter === f.value
-                    ? "bg-primary/15 text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter by note, category or amount"
-              aria-label="Filter transactions"
-              className="w-full rounded-lg border border-border/60 bg-transparent py-2 pl-9 pr-8 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
-            />
-            {query && (
-              <button
-                onClick={() => setQuery("")}
-                aria-label="Clear filter"
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {filtering && (
-            <p className="text-xs text-muted-foreground">
-              {visible.length} of {transactions.length} loaded
-            </p>
-          )}
-        </div>
-      )}
-
       {loading ? (
         <Card className="glass flex items-center justify-center py-16">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -274,131 +282,76 @@ export default function Transactions() {
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <Wallet className="h-6 w-6 text-primary" />
           </div>
-          <p className="max-w-xs text-sm text-muted-foreground">
-            No transactions yet. Add your first income or expense, or import a bank statement to
-            bring your history in at once.
-          </p>
-          <AddTransactionDialog
-            onCreated={reload}
-            trigger={
-              <Button size="sm" variant="secondary">
-                <Plus className="h-4 w-4" />
-                Add transaction
-              </Button>
-            }
-          />
-        </Card>
-      ) : visible.length === 0 ? (
-        <Card className="glass py-14 text-center">
-          <p className="text-sm text-muted-foreground">
-            Nothing here matches those filters.
-          </p>
-          <button
-            onClick={() => {
-              setQuery("");
-              setFilter("all");
-            }}
-            className="mt-2 text-sm font-medium text-primary hover:underline"
-          >
-            Clear filters
-          </button>
+          {filtered ? (
+            <>
+              <p className="text-sm text-muted-foreground">Nothing matches those filters.</p>
+              <button
+                onClick={() => setQuery({})}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Clear filters
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="max-w-xs text-sm text-muted-foreground">
+                No transactions yet. Add your first income or expense, or import a bank statement to
+                bring your history in at once.
+              </p>
+              <AddTransactionDialog
+                onCreated={reload}
+                trigger={
+                  <Button size="sm" variant="secondary">
+                    <Plus className="h-4 w-4" />
+                    Add transaction
+                  </Button>
+                }
+              />
+            </>
+          )}
         </Card>
       ) : (
         <div className="space-y-5">
-          {days.map((day) => (
-            <section key={day.date}>
-              {/* The date is said once per day instead of once per row. */}
-              <div className="flex items-baseline justify-between gap-4 px-1 pb-2">
-                <h3 className="text-sm font-semibold">{dayLabel(day.date)}</h3>
-                <span
-                  className={`text-xs font-medium tabular-nums ${
-                    day.net >= 0 ? "text-emerald-400" : "text-muted-foreground"
-                  }`}
-                >
-                  {day.net >= 0 ? "+" : "−"}
-                  {formatMoney(Math.abs(day.net))}
-                </span>
-              </div>
-
-              <Card className="glass overflow-hidden">
-                <ul className="divide-y divide-border/50">
-                  {day.items.map((t) => {
-                    const income = t.type === "income";
-                    const Icon = getCategoryIcon(t.category);
-                    return (
-                      <li key={t.id}>
-                        {/*
-                          The whole row is the link. Edit and delete used to sit
-                          here behind a hover state, which meant they were
-                          unreachable by touch; they live on the row's own screen
-                          now, one tap away.
-                        */}
-                        <Link
-                          to={`/money/transactions/${t.id}`}
-                          className="flex items-center gap-3.5 px-4 py-3 transition-colors hover:bg-accent/40 sm:px-5"
-                        >
-                          <span
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                              income
-                                ? "bg-emerald-500/15 text-emerald-400"
-                                : "bg-rose-500/15 text-rose-400"
-                            }`}
-                          >
-                            <Icon className="h-[1.1rem] w-[1.1rem]" />
-                          </span>
-
-                          <span className="min-w-0 flex-1">
-                            {/* The note leads: it is what the money was for. The
-                                category is how it is classified, which is a
-                                detail — the old row had these the wrong way up. */}
-                            <span className="block truncate text-sm font-medium">
-                              {t.note?.trim() || t.category}
-                            </span>
-                            <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <span className="truncate rounded bg-muted/60 px-1.5 py-0.5">
-                                {t.category}
-                              </span>
-                            </span>
-                          </span>
-
-                          <span
-                            className={`shrink-0 text-sm font-semibold tabular-nums ${
-                              income ? "text-emerald-400" : "text-foreground"
-                            }`}
-                          >
-                            {income ? "+" : "−"}
-                            {formatMoney(t.amount)}
-                          </span>
-
-                          {income ? (
-                            <ArrowUpRight className="h-4 w-4 shrink-0 text-emerald-400/50" />
-                          ) : (
-                            <ArrowDownLeft className="h-4 w-4 shrink-0 text-muted-foreground/40" />
-                          )}
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Card>
-            </section>
-          ))}
+          {grouped ? (
+            days.map((day) => (
+              <section key={day.date}>
+                {/* The date is said once per day instead of once per row. */}
+                <div className="flex items-baseline justify-between gap-4 px-1 pb-2">
+                  <h3 className="text-sm font-semibold">{dayLabel(day.date)}</h3>
+                  <span
+                    className={`text-xs font-medium tabular-nums ${
+                      day.net >= 0 ? "text-emerald-400" : "text-muted-foreground"
+                    }`}
+                  >
+                    {day.net >= 0 ? "+" : "−"}
+                    {formatMoney(Math.abs(day.net))}
+                  </span>
+                </div>
+                {rows(day.items, false)}
+              </section>
+            ))
+          ) : (
+            rows(transactions, true)
+          )}
 
           {/*
             Paging is explicit rather than infinite-scroll: this is a ledger
             people scan to the bottom of, and a list that grows as you reach the
             end makes "the oldest one" unreachable.
           */}
-          {!exhausted && (
-            <div className="flex justify-center pt-1">
+          {moreToLoad && (
+            <div className="flex flex-col items-center gap-1.5 pt-1">
               <Button variant="secondary" size="sm" onClick={loadMore} disabled={loadingMore}>
                 {loadingMore ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <ChevronDown className="h-4 w-4" />
                 )}
-                Load older
+                Load more
               </Button>
+              <p className="text-xs text-muted-foreground">
+                Showing {transactions.length} of {totals?.matched.toLocaleString("en-IN")}
+              </p>
             </div>
           )}
         </div>

@@ -337,19 +337,28 @@ export const api = {
   getTransaction: (id: number) =>
     request<{ transaction: Transaction }>(`/api/transactions/${id}`),
 
-  listTransactions: (params?: {
-    limit?: number;
-    offset?: number;
-    type?: "income" | "expense";
-  }) => {
+  /**
+   * The ledger, filtered server-side.
+   *
+   * Every filter is applied by the database rather than to the page that is
+   * already loaded — the page only holds a slice, so "last March" filtered in
+   * the browser would quietly answer a different question.
+   */
+  listTransactions: (params?: TransactionQuery) => {
     const q = new URLSearchParams();
-    if (params?.limit) q.set("limit", String(params.limit));
-    // Falsy check would drop offset=0, which is the first page.
-    if (params?.offset != null) q.set("offset", String(params.offset));
-    if (params?.type) q.set("type", params.type);
+    for (const [key, value] of Object.entries(params ?? {})) {
+      // `!= null` and not a falsy check: offset 0 and min 0 are both real.
+      if (value != null && value !== "") q.set(key, String(value));
+    }
     const qs = q.toString();
-    return request<{ transactions: Transaction[] }>(`/api/transactions${qs ? `?${qs}` : ""}`);
+    return request<{ transactions: Transaction[]; totals: TransactionTotals }>(
+      `/api/transactions${qs ? `?${qs}` : ""}`,
+    );
   },
+
+  /** Categories the account has actually used, commonest first. */
+  transactionCategories: () =>
+    request<{ categories: { category: string; n: number }[] }>("/api/transactions/categories"),
 
   moneySummary: () =>
     request<{
@@ -1061,6 +1070,33 @@ export interface Transaction {
   note: string | null;
   occurred_on: string;
   created_at?: string;
+}
+
+export type TransactionSort = "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
+
+/** Every filter the ledger accepts. All optional; all applied by the database. */
+export interface TransactionQuery {
+  limit?: number;
+  offset?: number;
+  type?: "income" | "expense";
+  /** Inclusive YYYY-MM-DD bounds. */
+  from?: string;
+  to?: string;
+  category?: string;
+  /** Matched against the note and the category. */
+  q?: string;
+  /** Rupees, inclusive. */
+  min?: number;
+  max?: number;
+  sort?: TransactionSort;
+}
+
+/** Totals for the whole filtered set — not just the page that came back. */
+export interface TransactionTotals {
+  income: number;
+  expense: number;
+  net: number;
+  matched: number;
 }
 
 export interface MoneyDashboardData {
