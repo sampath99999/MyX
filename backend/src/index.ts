@@ -112,6 +112,30 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
       occurred_on: string;
     }>();
 
+  /*
+    What actually needs the user today: tasks due or overdue, and bills due
+    inside a week. A dashboard that only totals things is a report; this is the
+    part that makes it worth opening in the morning.
+  */
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const weekAhead = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+
+  const dueTasks = await c.env.DB.prepare(
+    `SELECT id, title, due_date, priority FROM tasks
+      WHERE user_id = ?1 AND status = 'open' AND due_date IS NOT NULL AND due_date <= ?2
+      ORDER BY due_date, priority, id LIMIT 5`,
+  )
+    .bind(user.sub, todayIso)
+    .all<{ id: number; title: string; due_date: string; priority: number }>();
+
+  const dueBills = await c.env.DB.prepare(
+    `SELECT id, name, amount, next_due FROM recurring
+      WHERE user_id = ?1 AND active = 1 AND next_due <= ?2
+      ORDER BY next_due, id LIMIT 5`,
+  )
+    .bind(user.sub, weekAhead)
+    .all<{ id: number; name: string; amount: number; next_due: string }>();
+
   // The user's first checklist (their own ordering), with its items — the card
   // is a live tick-off surface, not a preview.
   const checklist = await c.env.DB.prepare(
@@ -142,6 +166,10 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
       openTasks: counts?.open_tasks ?? 0,
       notes: counts?.notes ?? 0,
       checklists: counts?.checklists ?? 0,
+    },
+    today: {
+      tasks: dueTasks.results ?? [],
+      bills: (dueBills.results ?? []).map((b) => ({ ...b, amount: b.amount / 100 })),
     },
     recent: (recent.results ?? []).map((t) => ({ ...t, amount: t.amount / 100 })),
     checklist: checklist

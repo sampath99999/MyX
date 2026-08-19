@@ -7,6 +7,8 @@ import {
   ListChecks,
   ArrowDownLeft,
   ArrowUpRight,
+  Bell,
+  CalendarClock,
   Check,
   Plus,
   ArrowRight,
@@ -45,8 +47,28 @@ interface Summary {
     notes: number;
     checklists: number;
   };
+  today: {
+    tasks: { id: number; title: string; due_date: string; priority: number }[];
+    bills: { id: number; name: string; amount: number; next_due: string }[];
+  };
   recent: RecentTransaction[];
   checklist: DashboardChecklist | null;
+}
+
+/** Local calendar date — "today" must be the user's, not UTC's. */
+const todayIso = (() => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+})();
+
+/** Relative and short, because a due date only matters as "when, relative to now". */
+function dueLabel(iso: string): string {
+  if (iso < todayIso) return "overdue";
+  if (iso === todayIso) return "today";
+  const days = Math.round(
+    (new Date(`${iso}T00:00:00`).getTime() - new Date(`${todayIso}T00:00:00`).getTime()) / 86_400_000,
+  );
+  return days === 1 ? "tomorrow" : `${days}d`;
 }
 
 /** "5 Aug" — enough to place a transaction without the noise of a full date. */
@@ -96,6 +118,7 @@ export default function Dashboard() {
   }
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
+  const needsYou = (summary?.today.tasks.length ?? 0) + (summary?.today.bills.length ?? 0);
 
   const stats = [
     {
@@ -166,7 +189,9 @@ export default function Dashboard() {
             {summary?.greeting ?? `Welcome back, ${firstName}`} 👋
           </h2>
           <p className="mt-1.5 text-muted-foreground">
-            Here's a snapshot of your life today. Modules light up as you add them.
+            {needsYou > 0
+              ? `${needsYou} thing${needsYou === 1 ? "" : "s"} need you, and here's where everything else stands.`
+              : "Nothing is due. Here's where everything stands."}
           </p>
         </div>
 
@@ -198,6 +223,63 @@ export default function Dashboard() {
             );
           })}
         </div>
+
+        {/*
+          Needs you today. A dashboard that only totals things is a report —
+          this is the part that gives a reason to open it in the morning, and it
+          is the same set the daily digest emails.
+        */}
+        {needsYou > 0 && (
+          <Card className="glass p-6 animate-in-up">
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4 text-amber-300" />
+              <h3 className="font-semibold">
+                Needs you {summary!.today.tasks.length > 0 ? "today" : "this week"}
+              </h3>
+            </div>
+
+            <div className="mt-4 grid gap-x-8 gap-y-2 sm:grid-cols-2">
+              {summary!.today.bills.map((b) => (
+                <Link
+                  key={`bill-${b.id}`}
+                  to="/money/recurring"
+                  className="flex items-center gap-3 rounded-lg py-2 transition-colors hover:bg-accent/40"
+                >
+                  <CalendarClock
+                    className={`h-4 w-4 shrink-0 ${
+                      b.next_due < todayIso ? "text-rose-300" : "text-amber-300"
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm">{b.name}</span>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">
+                    {formatMoney(b.amount)}
+                  </span>
+                  <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
+                    {dueLabel(b.next_due)}
+                  </span>
+                </Link>
+              ))}
+
+              {summary!.today.tasks.map((t) => (
+                <Link
+                  key={`task-${t.id}`}
+                  to="/tasks"
+                  className="flex items-center gap-3 rounded-lg py-2 transition-colors hover:bg-accent/40"
+                >
+                  <CheckCircle2
+                    className={`h-4 w-4 shrink-0 ${
+                      t.due_date < todayIso ? "text-rose-300" : "text-sky-300"
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
+                  <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
+                    {dueLabel(t.due_date)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Panels */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

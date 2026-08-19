@@ -164,6 +164,11 @@ export const api = {
         notes: number;
         checklists: number;
       };
+      /** What needs the user now: tasks due or overdue, bills due within a week. */
+      today: {
+        tasks: { id: number; title: string; due_date: string; priority: number }[];
+        bills: { id: number; name: string; amount: number; next_due: string }[];
+      };
       /** Latest transactions, newest first. Amounts in rupees. */
       recent: {
         id: number;
