@@ -241,6 +241,46 @@ npm --prefix backend test       # amortization, rate limiting, idempotency, auth
 npm --prefix frontend test      # quick-add parsing, markdown XSS regressions
 ```
 
+### Email (password reset + signup codes)
+
+Production email goes through **Resend** over HTTPS. Two reasons it is not
+Cloudflare Email Sending: that requires the **Workers Paid** plan ($5/mo), and
+Workers cannot open an SMTP connection at all — so every "free SMTP server" is
+unusable here whatever its quota. Resend's free tier is 3,000 emails/month and
+100/day on one verified domain, permanently, which is far more than resets and
+verification codes need.
+
+Setup, once:
+
+1. Create a Resend account and add `samchitech.com` as a domain.
+2. Resend shows three DNS records. Add them in Cloudflare DNS for the zone —
+   set each to **DNS only** (grey cloud), not proxied:
+   - `TXT  send`      — SPF, `v=spf1 include:amazonses.com ~all`
+   - `TXT  resend._domainkey` — DKIM public key
+   - `TXT  _dmarc`    — `v=DMARC1; p=none;` if the zone has no DMARC record yet
+3. Wait for Resend to mark the domain **Verified**.
+4. Store the API key as a Worker secret and redeploy:
+
+```bash
+cd backend
+npx wrangler secret put RESEND_API_KEY
+npm run deploy
+```
+
+`EMAIL_FROM` in `wrangler.jsonc` must be an address on the verified domain.
+
+**Transports are tried in order** (`backend/src/lib/email.ts`): Resend when
+`RESEND_API_KEY` is set, then Cloudflare's `send_email` binding — kept only
+because `wrangler dev` simulates it, which makes the whole flow testable locally
+with no key and no real mail — and finally logging. A send that fails never
+changes the HTTP response: `/register` still creates the account and `/forgot`
+still answers 202, because a mail outage must not become a signup outage.
+
+Once a real code has arrived in an inbox, make verification mandatory by adding
+`"REQUIRE_VERIFIED_EMAIL": "true"` to `vars` and redeploying. Do not enable it
+before then — anyone who signed up while codes were going nowhere would be
+locked out.
+
 ### PWA
 
 `frontend/public/` holds `manifest.webmanifest`, the icon set and `sw.js`. The service worker

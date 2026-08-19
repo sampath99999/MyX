@@ -11,9 +11,13 @@
   "observability": {
     "enabled": true
   },
-  // Transactional email (password reset). Requires the domain to be onboarded
-  // first: `npx wrangler email sending enable samchitech.com`. Until then the
-  // mailer logs the message instead of failing the request — see lib/email.ts.
+  // Transactional email in production goes through Resend over HTTPS — its free
+  // tier needs no paid plan, whereas Cloudflare Email Sending requires Workers
+  // Paid ($5/mo). Set the key with `wrangler secret put RESEND_API_KEY`.
+  //
+  // This binding stays because `wrangler dev` simulates it, which is what makes
+  // the signup and reset flows testable locally with no key and no real mail.
+  // See src/lib/email.ts for the transport order.
   "send_email": [{ "name": "EMAIL" }],
 
   // Flood protection for /api/*. Free, and unlike the D1 limiter it costs no

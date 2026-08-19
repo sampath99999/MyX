@@ -18,7 +18,13 @@ export interface Env {
    * reopen it (adding a family member later, say).
    */
   REGISTRATION_OPEN?: string;
-  /** Cloudflare Email Sending binding. Absent until the domain is onboarded. */
+  /**
+   * Resend API key (a secret, set with `wrangler secret put RESEND_API_KEY`).
+   * Preferred transport: its free tier needs no paid plan, unlike Cloudflare
+   * Email Sending, which requires Workers Paid.
+   */
+  RESEND_API_KEY?: string;
+  /** Cloudflare Email Sending binding. Kept because wrangler dev simulates it. */
   EMAIL?: {
     send(message: {
       to: string;

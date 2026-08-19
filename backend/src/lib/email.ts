@@ -1,17 +1,26 @@
 import type { Env } from "../types";
 
 /*
-  Transactional email via Cloudflare's Email Sending binding.
+  Transactional email.
 
-  The binding is optional on purpose. Email Sending needs the domain onboarded
-  (`wrangler email sending enable samchitech.com`), which is an account-level
-  step, and local dev has no binding at all. Rather than make password reset
-  fail closed in those situations, an unconfigured mailer logs the message and
-  reports that it did not send — the caller decides what to do with that.
+  Three transports, tried in order, because each one covers a case the others
+  cannot:
 
-  Nothing here ever puts a reset link in a response body. The link goes to the
-  mailbox or to the Worker log, both of which require access the requester has
-  to already have.
+    1. Resend — production. An HTTP API, which matters more than it sounds:
+       Workers cannot open an SMTP connection, so every "free SMTP server" is
+       unusable here regardless of its quota. Free tier is 3,000/month and
+       100/day on one verified domain, which is far more than password resets
+       and signup codes need.
+    2. Cloudflare's send_email binding — kept because `wrangler dev` simulates
+       it, so the whole flow can be exercised locally with no API key and no
+       real mail leaving the machine. Sending for real through it needs the
+       $5/month Workers Paid plan, which is why it is not first.
+    3. Logging — local dev and any misconfiguration. The message goes to the
+       Worker log and the caller is told it did not send.
+
+  Nothing here ever returns a code or a reset link to the HTTP caller. It goes
+  to the mailbox or to the log, both of which need access the requester must
+  already have.
 */
 
 export interface EmailMessage {
@@ -21,38 +30,74 @@ export interface EmailMessage {
   text: string;
 }
 
-export type SendResult = { sent: boolean; reason?: string };
+export type SendResult = { sent: boolean; via?: "resend" | "binding"; reason?: string };
 
-export async function sendEmail(env: Env, message: EmailMessage): Promise<SendResult> {
-  if (!env.EMAIL?.send) {
-    // Local dev, or the binding not yet provisioned. Log enough to complete the
-    // flow by hand without printing anything that is not already in the email.
-    console.warn(
-      `[email] no EMAIL binding — would have sent "${message.subject}" to ${message.to}\n${message.text}`,
-    );
-    return { sent: false, reason: "email-not-configured" };
-  }
+const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
-  try {
-    await env.EMAIL.send({
+function fromAddress(env: Env): string {
+  const address = env.EMAIL_FROM ?? "noreply@samchitech.com";
+  // Resend accepts "Name <addr>"; a bare address works too but shows the raw
+  // mailbox as the sender name in most clients.
+  return `MyX <${address}>`;
+}
+
+async function sendViaResend(env: Env, message: EmailMessage): Promise<SendResult> {
+  const res = await fetch(RESEND_ENDPOINT, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: fromAddress(env),
       to: message.to,
-      from: { email: env.EMAIL_FROM ?? "noreply@samchitech.com", name: "MyX" },
       subject: message.subject,
       html: message.html,
-      // Always both: some clients only render text, and text-only-missing hurts
-      // spam scoring.
+      // Always both: some clients render only text, and a missing text part
+      // hurts spam scoring.
       text: message.text,
-    });
-    return { sent: true };
+    }),
+  });
+
+  if (!res.ok) {
+    // Body carries the reason (unverified domain, bad key, quota). Logged, never
+    // returned — see the callers, which answer identically either way.
+    const detail = await res.text().catch(() => "");
+    console.error(`[email] resend rejected ${res.status}: ${detail.slice(0, 300)}`);
+    return { sent: false, reason: `resend-${res.status}` };
+  }
+
+  return { sent: true, via: "resend" };
+}
+
+async function sendViaBinding(env: Env, message: EmailMessage): Promise<SendResult> {
+  await env.EMAIL!.send({
+    to: message.to,
+    from: { email: env.EMAIL_FROM ?? "noreply@samchitech.com", name: "MyX" },
+    subject: message.subject,
+    html: message.html,
+    text: message.text,
+  });
+  return { sent: true, via: "binding" };
+}
+
+export async function sendEmail(env: Env, message: EmailMessage): Promise<SendResult> {
+  try {
+    if (env.RESEND_API_KEY) return await sendViaResend(env, message);
+    if (env.EMAIL?.send) return await sendViaBinding(env, message);
   } catch (err) {
-    // A send failure must not leak into the HTTP response — see routes/auth.ts,
-    // where forgot-password answers identically no matter what happened.
+    // A transport failure must never surface in the HTTP response.
     console.error("[email] send failed:", err);
     return { sent: false, reason: "send-failed" };
   }
+
+  console.warn(
+    `[email] no transport configured — would have sent "${message.subject}" to ${message.to}\n${message.text}`,
+  );
+  return { sent: false, reason: "email-not-configured" };
 }
 
-/** The one email MyX sends. Kept here so the copy lives next to the transport. */
+/** Password reset. Copy lives beside the transport that carries it. */
 export function passwordResetEmail(link: string, minutes: number): Omit<EmailMessage, "to"> {
   const text = [
     "Reset your MyX password",
