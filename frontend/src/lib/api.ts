@@ -337,9 +337,15 @@ export const api = {
   getTransaction: (id: number) =>
     request<{ transaction: Transaction }>(`/api/transactions/${id}`),
 
-  listTransactions: (params?: { limit?: number; type?: "income" | "expense" }) => {
+  listTransactions: (params?: {
+    limit?: number;
+    offset?: number;
+    type?: "income" | "expense";
+  }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
+    // Falsy check would drop offset=0, which is the first page.
+    if (params?.offset != null) q.set("offset", String(params.offset));
     if (params?.type) q.set("type", params.type);
     const qs = q.toString();
     return request<{ transactions: Transaction[] }>(`/api/transactions${qs ? `?${qs}` : ""}`);
