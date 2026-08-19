@@ -219,6 +219,22 @@ export const api = {
     body: JSON.stringify(body),
   }),
 
+  /** Correct an entry. Omitted fields are left as they are; note accepts null to clear. */
+  updateTransaction: (
+    id: number,
+    body: Partial<{
+      type: "income" | "expense";
+      amount: number;
+      category: string;
+      note: string | null;
+      occurred_on: string;
+    }>,
+  ) =>
+    request<{ transaction: Transaction }>(`/api/transactions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
   deleteTransaction: (id: number) =>
     request<{ ok: true }>(`/api/transactions/${id}`, { method: "DELETE" }),
 
@@ -331,6 +347,21 @@ export const api = {
    * payment logged late lands in the month it was actually made rather than
    * the month it was entered.
    */
+  /**
+   * A lump sum straight off the principal. Returns what it saved in interest
+   * and months — the reason to do it at all.
+   */
+  prepayLoan: (id: number, amount: number, idempotencyKey: string, paidOn?: string) =>
+    request<{
+      loan: Loan;
+      payment: { amount: number; principal_part: number; balance_after: number };
+      saved?: { interest: number; months: number; closed: boolean };
+      replayed?: boolean;
+    }>(`/api/loans/${id}/prepay`, {
+      method: "POST",
+      body: JSON.stringify({ amount, idempotency_key: idempotencyKey, paid_on: paidOn }),
+    }),
+
   payLoan: (id: number, idempotencyKey: string, logTransaction = true, paidOn?: string) =>
     request<{ loan: Loan; payment: LoanPayment; replayed?: boolean }>(`/api/loans/${id}/pay`, {
       method: "POST",

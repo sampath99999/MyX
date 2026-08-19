@@ -8,6 +8,7 @@ import {
   CalendarCheck,
   ListChecks,
   CheckCircle2,
+  TrendingDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -51,6 +52,15 @@ export default function Loans() {
   */
   const [paidOn, setPaidOn] = useState(todayIso);
 
+  // Prepayment is a separate intent from an EMI: a free amount, all principal.
+  const [prepaying, setPrepaying] = useState<Loan | null>(null);
+  const [prepayAmount, setPrepayAmount] = useState("");
+  const [prepaySaved, setPrepaySaved] = useState<{
+    interest: number;
+    months: number;
+    closed: boolean;
+  } | null>(null);
+
   // One key per payment *intent*, minted when the confirm dialog opens. Every
   // retry of that intent reuses it, so the server can collapse duplicates.
   const payKey = useRef<string | null>(null);
@@ -84,6 +94,45 @@ export default function Loans() {
       // The key is deliberately kept so a retry is treated as the same intent
       // rather than booking a second EMI.
       setPayError(err instanceof ApiError ? err.message : "Could not record the payment.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function askToPrepay(loan: Loan) {
+    payKey.current = crypto.randomUUID();
+    setPayError(null);
+    setPaidOn(todayIso());
+    setPrepayAmount("");
+    setPrepaySaved(null);
+    setPrepaying(loan);
+  }
+
+  async function confirmPrepay() {
+    const loan = prepaying;
+    const key = payKey.current;
+    const amount = Number(prepayAmount);
+    if (!loan || !key) return;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPayError("Enter an amount greater than 0.");
+      return;
+    }
+    if (amount > loan.outstanding) {
+      setPayError(`That is more than the ${formatMoney(loan.outstanding)} outstanding.`);
+      return;
+    }
+
+    setBusyId(loan.id);
+    setPayError(null);
+    try {
+      const res = await api.prepayLoan(loan.id, amount, key, paidOn);
+      // Hold the dialog open on the result: what it saved is the whole point,
+      // and closing straight away would throw that away.
+      setPrepaySaved(res.saved ?? null);
+      payKey.current = null;
+      await reload();
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Could not record the prepayment.");
     } finally {
       setBusyId(null);
     }
@@ -257,16 +306,28 @@ export default function Loans() {
                     }
                   />
                   {!closed && (
-                    <Button size="sm" className="flex-1" onClick={() => askToPay(l)} disabled={busyId === l.id}>
-                      {busyId === l.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <CalendarCheck className="h-4 w-4" />
-                          Pay EMI
-                        </>
-                      )}
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => askToPrepay(l)}
+                        disabled={busyId === l.id}
+                        title="Pay a lump sum off the principal"
+                      >
+                        <TrendingDown className="h-4 w-4" />
+                        Prepay
+                      </Button>
+                      <Button size="sm" className="flex-1" onClick={() => askToPay(l)} disabled={busyId === l.id}>
+                        {busyId === l.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <CalendarCheck className="h-4 w-4" />
+                            Pay EMI
+                          </>
+                        )}
+                      </Button>
+                    </>
                   )}
                   {closed && (
                     <div className="flex flex-1 items-center justify-center gap-1.5 text-sm font-medium text-emerald-400">
@@ -394,6 +455,131 @@ export default function Loans() {
                   )}
                 </Button>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/*
+        Prepayment. Unlike an EMI there is nothing to preview beforehand — the
+        interesting number is what it saved, so the dialog stays open afterwards
+        to show it rather than closing on a silent success.
+      */}
+      <Dialog
+        open={prepaying !== null}
+        onOpenChange={(v) => {
+          if (!v) {
+            setPrepaying(null);
+            setPrepaySaved(null);
+            payKey.current = null;
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{prepaySaved ? "Prepayment recorded" : "Pay off a lump sum"}</DialogTitle>
+            <DialogDescription>
+              {prepaying
+                ? `${prepaying.name}${prepaying.lender ? ` · ${prepaying.lender}` : ""}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {prepaying && !prepaySaved && (
+            <div className="space-y-4">
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                A prepayment goes entirely against the principal — no part of it is interest. Every
+                month after this is then charged on a smaller balance, which is why it saves more
+                than the amount you pay.
+              </p>
+
+              <div>
+                <label htmlFor="prepay-amount" className="text-sm font-medium">
+                  Amount
+                </label>
+                <input
+                  id="prepay-amount"
+                  type="number"
+                  inputMode="decimal"
+                  min={1}
+                  max={prepaying.outstanding}
+                  value={prepayAmount}
+                  onChange={(e) => setPrepayAmount(e.target.value)}
+                  placeholder="50000"
+                  autoFocus
+                  className="mt-1.5 w-full rounded-lg border border-input bg-transparent px-3 py-2.5 text-lg font-semibold tabular-nums outline-none focus:border-ring"
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {formatMoney(prepaying.outstanding)} outstanding.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="prepay-date" className="text-sm font-medium">
+                  Paid on
+                </label>
+                <input
+                  id="prepay-date"
+                  type="date"
+                  value={paidOn}
+                  max={todayIso()}
+                  onChange={(e) => setPaidOn(e.target.value || todayIso())}
+                  className="mt-1.5 w-full rounded-lg border border-input bg-transparent px-3 py-2.5 outline-none focus:border-ring"
+                />
+              </div>
+
+              {payError && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive">
+                  {payError}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => setPrepaying(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={confirmPrepay}
+                  disabled={busyId === prepaying.id}
+                >
+                  {busyId === prepaying.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <TrendingDown className="h-4 w-4" />
+                      Record prepayment
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {prepaySaved && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <div className="text-xs uppercase tracking-wider text-emerald-300/80">
+                  Interest saved
+                </div>
+                <div className="mt-1 text-3xl font-bold tracking-tight text-emerald-300">
+                  {formatMoney(prepaySaved.interest)}
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {prepaySaved.closed
+                    ? "That clears the loan — it is now closed."
+                    : `The loan finishes ${prepaySaved.months} month${
+                        prepaySaved.months === 1 ? "" : "s"
+                      } earlier than it would have.`}
+                </p>
+              </div>
+              <Button className="w-full" onClick={() => setPrepaying(null)}>
+                Done
+              </Button>
             </div>
           )}
         </DialogContent>

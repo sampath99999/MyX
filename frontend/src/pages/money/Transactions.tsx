@@ -5,6 +5,7 @@ import {
   ArrowDownLeft,
   Wallet,
   Trash2,
+  Pencil,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -127,6 +128,19 @@ export default function Transactions() {
                     {income ? "+" : "−"}
                     {formatMoney(t.amount)}
                   </div>
+
+                  <AddTransactionDialog
+                    transaction={t}
+                    onCreated={reload}
+                    trigger={
+                      <button
+                        title="Edit"
+                        className="text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    }
+                  />
 
                   <button
                     onClick={() => onDelete(t.id)}

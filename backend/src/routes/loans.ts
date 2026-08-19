@@ -310,6 +310,156 @@ loans.post("/:id/pay", async (c) => {
   });
 });
 
+/**
+ * POST /api/loans/:id/prepay — a lump sum straight off the principal.
+ *
+ * Distinct from an EMI, and not a variation of one. An instalment is split into
+ * interest and principal; a prepayment is entirely principal, which is exactly
+ * why it saves money — every future month's interest is then charged on a
+ * smaller balance.
+ *
+ * The response reports that saving, computed by projecting the schedule before
+ * and after. It is the number that makes someone actually do it, and the app
+ * was already claiming it on the EMI calculator page while being unable to
+ * record one.
+ *
+ * Body: { amount, paid_on?, idempotency_key, log_transaction? }
+ */
+loans.post("/:id/prepay", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const body = await c.req.json().catch(() => null);
+  const idempotencyKey = String(body?.idempotency_key ?? "").trim();
+  if (!idempotencyKey)
+    throw new HTTPException(400, { message: "idempotency_key is required" });
+
+  const logTransaction = body?.log_transaction !== false;
+
+  // Same replay handling as an EMI: a repeated intent returns the original
+  // result rather than paying down the loan twice.
+  const priorPayment = await c.env.DB.prepare(
+    "SELECT * FROM loan_payments WHERE loan_id = ? AND idempotency_key = ?",
+  )
+    .bind(id, idempotencyKey)
+    .first<{ amount: number; principal_part: number; balance_after: number }>();
+
+  const loan = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  if (!loan) throw new HTTPException(404, { message: "Loan not found" });
+
+  if (priorPayment) {
+    return c.json({
+      loan: serialize(loan, await paidCountFor(c.env.DB, id)),
+      payment: {
+        amount: toRupees(priorPayment.amount),
+        principal_part: toRupees(priorPayment.principal_part),
+        balance_after: toRupees(priorPayment.balance_after),
+      },
+      replayed: true,
+    });
+  }
+
+  if (loan.status === "closed") throw new HTTPException(400, { message: "Loan is already closed" });
+
+  const amount = Number(body?.amount);
+  if (!Number.isFinite(amount) || amount <= 0)
+    throw new HTTPException(400, { message: "amount must be a positive number" });
+
+  const amountPaise = toPaise(amount);
+  if (amountPaise > loan.outstanding)
+    throw new HTTPException(400, {
+      message: "Prepayment cannot be more than the outstanding balance",
+    });
+
+  const today = new Date().toISOString().slice(0, 10);
+  let paidOn = today;
+  if (body?.paid_on !== undefined && body?.paid_on !== null) {
+    const requested = String(body.paid_on);
+    if (!dateRe.test(requested))
+      throw new HTTPException(400, { message: "paid_on must be a date in YYYY-MM-DD form" });
+    if (requested > today)
+      throw new HTTPException(400, { message: "paid_on cannot be in the future" });
+    paidOn = requested;
+  }
+
+  const balanceAfter = loan.outstanding - amountPaise;
+  const nextStatus = balanceAfter <= 0 ? "closed" : "active";
+
+  // What this actually bought, in interest and in months.
+  const before = projectSchedule(loan.outstanding, loan.annual_rate, loan.emi);
+  const after =
+    balanceAfter > 0 ? projectSchedule(balanceAfter, loan.annual_rate, loan.emi) : null;
+  const interestSaved = before.totalInterest - (after?.totalInterest ?? 0);
+  const monthsSaved = before.months - (after?.months ?? 0);
+
+  const stmts = [
+    c.env.DB.prepare(
+      `INSERT INTO loan_payments
+         (loan_id, user_id, amount, interest_part, principal_part, balance_after, paid_on, idempotency_key, kind)
+       VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'prepayment')`,
+    ).bind(id, user.sub, amountPaise, amountPaise, balanceAfter, paidOn, idempotencyKey),
+    c.env.DB.prepare("UPDATE loans SET outstanding = ?, status = ? WHERE id = ? AND user_id = ?").bind(
+      balanceAfter,
+      nextStatus,
+      id,
+      user.sub,
+    ),
+  ];
+  if (logTransaction) {
+    stmts.push(
+      c.env.DB.prepare(
+        `INSERT INTO transactions (user_id, type, amount, category, note, occurred_on)
+         VALUES (?, 'expense', ?, 'Loan prepayment', ?, ?)`,
+      ).bind(user.sub, amountPaise, `${loan.name} prepayment`, paidOn),
+    );
+  }
+
+  try {
+    await c.env.DB.batch(stmts);
+  } catch (e) {
+    // The UNIQUE index caught a race past the SELECT above. Treat as a replay.
+    const replay = await c.env.DB.prepare(
+      "SELECT * FROM loan_payments WHERE loan_id = ? AND idempotency_key = ?",
+    )
+      .bind(id, idempotencyKey)
+      .first<{ amount: number; principal_part: number; balance_after: number }>();
+    if (!replay) throw e;
+    const current = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+      .bind(id, user.sub)
+      .first<LoanRow>();
+    return c.json({
+      loan: serialize(current!, await paidCountFor(c.env.DB, id)),
+      payment: {
+        amount: toRupees(replay.amount),
+        principal_part: toRupees(replay.principal_part),
+        balance_after: toRupees(replay.balance_after),
+      },
+      replayed: true,
+    });
+  }
+
+  const updated = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+
+  return c.json({
+    loan: serialize(updated!, await paidCountFor(c.env.DB, id)),
+    payment: {
+      amount: toRupees(amountPaise),
+      principal_part: toRupees(amountPaise),
+      balance_after: toRupees(balanceAfter),
+    },
+    saved: {
+      interest: toRupees(interestSaved),
+      months: monthsSaved,
+      closed: nextStatus === "closed",
+    },
+  });
+});
+
 /** POST /api/loans/:id/rate — floating rate change (affects future interest). Body: { annual_rate, effective_from? } */
 loans.post("/:id/rate", async (c) => {
   const user = c.get("user");

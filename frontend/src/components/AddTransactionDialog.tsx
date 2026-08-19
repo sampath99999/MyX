@@ -12,36 +12,49 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import CategoryPicker from "@/components/CategoryPicker";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type Transaction } from "@/lib/api";
 import { amountToWords } from "@/lib/numberToWords";
 import { sanitizeAmount } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
+/*
+  Doubles as the edit dialog when given an existing transaction.
+
+  A separate edit form would mean two places to keep the amount-in-words, the
+  category picker and the validation in step — and correcting an entry should
+  feel like the thing you already know how to use, not a lesser version of it.
+*/
 export default function AddTransactionDialog({
   onCreated,
   trigger,
+  transaction,
 }: {
   onCreated?: () => void;
   trigger: ReactNode;
+  transaction?: Transaction;
 }) {
+  const editing = transaction !== undefined;
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<"income" | "expense">("expense");
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("");
-  const [note, setNote] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [type, setType] = useState<"income" | "expense">(transaction?.type ?? "expense");
+  const [amount, setAmount] = useState(transaction ? String(transaction.amount) : "");
+  const [category, setCategory] = useState(transaction?.category ?? "");
+  const [note, setNote] = useState(transaction?.note ?? "");
+  const [date, setDate] = useState(
+    () => transaction?.occurred_on ?? new Date().toISOString().slice(0, 10),
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const value = parseFloat(amount);
   const words = amountToWords(value);
 
+  /* Closing an edit restores the saved values, not blanks. */
   function reset() {
-    setType("expense");
-    setAmount("");
-    setCategory("");
-    setNote("");
-    setDate(new Date().toISOString().slice(0, 10));
+    setType(transaction?.type ?? "expense");
+    setAmount(transaction ? String(transaction.amount) : "");
+    setCategory(transaction?.category ?? "");
+    setNote(transaction?.note ?? "");
+    setDate(transaction?.occurred_on ?? new Date().toISOString().slice(0, 10));
     setError(null);
   }
 
@@ -58,13 +71,24 @@ export default function AddTransactionDialog({
     }
     setLoading(true);
     try {
-      await api.createTransaction({
-        type,
-        amount: value,
-        category: category.trim(),
-        note: note.trim() || undefined,
-        occurred_on: date,
-      });
+      if (editing) {
+        await api.updateTransaction(transaction.id, {
+          type,
+          amount: value,
+          category: category.trim(),
+          // null rather than undefined, so clearing a note actually clears it.
+          note: note.trim() || null,
+          occurred_on: date,
+        });
+      } else {
+        await api.createTransaction({
+          type,
+          amount: value,
+          category: category.trim(),
+          note: note.trim() || undefined,
+          occurred_on: date,
+        });
+      }
       setOpen(false);
       reset();
       onCreated?.();
@@ -88,8 +112,12 @@ export default function AddTransactionDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add transaction</DialogTitle>
-          <DialogDescription>Record income or an expense in a few taps.</DialogDescription>
+          <DialogTitle>{editing ? "Edit transaction" : "Add transaction"}</DialogTitle>
+          <DialogDescription>
+            {editing
+              ? "Change any of it — the balance and this month's totals follow."
+              : "Record income or an expense in a few taps."}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-5">
@@ -184,7 +212,7 @@ export default function AddTransactionDialog({
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                {isIncome ? "Add income" : "Add expense"}
+                {editing ? "Save changes" : isIncome ? "Add income" : "Add expense"}
                 {value > 0 && ` · ₹${amount}`}
               </>
             )}
