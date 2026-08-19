@@ -384,6 +384,16 @@ export const api = {
    * A lump sum straight off the principal. Returns what it saved in interest
    * and months — the reason to do it at all.
    */
+  /**
+   * Reverse the most recent payment: restores the balance, reopens the loan if
+   * that payment closed it, and deletes the expense it booked.
+   */
+  undoLoanPayment: (loanId: number, paymentId: number) =>
+    request<{ loan: Loan; reversed: { principal: number; expense_removed: boolean } }>(
+      `/api/loans/${loanId}/payments/${paymentId}`,
+      { method: "DELETE" },
+    ),
+
   prepayLoan: (id: number, amount: number, idempotencyKey: string, paidOn?: string) =>
     request<{
       loan: Loan;
@@ -785,7 +795,11 @@ export interface LoanScheduleRow {
 }
 
 export interface LoanPayment {
-  id?: number;
+  kind?: "emi" | "prepayment";
+  /** Only the newest payment can be reversed — earlier rows depend on it. */
+  can_undo?: boolean;
+  /** Always returned; undoing a payment needs it. */
+  id: number;
   amount: number;
   interest_part: number;
   principal_part: number;

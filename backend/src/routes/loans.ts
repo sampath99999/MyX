@@ -117,13 +117,16 @@ loans.get("/:id", async (c) => {
       payment: toRupees(r.payment),
       balance: toRupees(r.balance),
     })),
-    payments: (payments ?? []).map((p: Record<string, unknown>) => ({
+    payments: (payments ?? []).map((p: Record<string, unknown>, i: number) => ({
       id: p.id,
       amount: toRupees(p.amount as number),
       interest_part: toRupees(p.interest_part as number),
       principal_part: toRupees(p.principal_part as number),
       balance_after: toRupees(p.balance_after as number),
       paid_on: p.paid_on,
+      kind: (p.kind as string) ?? "emi",
+      // Newest first, so only the first row is reversible — see the delete route.
+      can_undo: i === 0,
     })),
   });
 });
@@ -243,11 +246,28 @@ loans.post("/:id/pay", async (c) => {
   }
   const nextStatus = balanceAfter <= 0 ? "closed" : "active";
 
+  /*
+    The expense is written first so its id can be stored on the payment. Without
+    that link, deleting the expense in the Money module left the loan still
+    believing it had been paid, and undoing the payment could not clean up after
+    itself. An orphan is removed below if the batch then fails.
+  */
+  const bookedTransactionId = logTransaction
+    ? (
+        await c.env.DB.prepare(
+          `INSERT INTO transactions (user_id, type, amount, category, note, occurred_on)
+           VALUES (?, 'expense', ?, 'Loan EMI', ?, ?) RETURNING id`,
+        )
+          .bind(user.sub, payment, `${loan.name} EMI`, paidOn)
+          .first<{ id: number }>()
+      )?.id ?? null
+    : null;
+
   const stmts = [
     c.env.DB.prepare(
-      `INSERT INTO loan_payments (loan_id, user_id, amount, interest_part, principal_part, balance_after, paid_on, idempotency_key)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(id, user.sub, payment, interest, principal, balanceAfter, paidOn, idempotencyKey),
+      `INSERT INTO loan_payments (loan_id, user_id, amount, interest_part, principal_part, balance_after, paid_on, idempotency_key, transaction_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, user.sub, payment, interest, principal, balanceAfter, paidOn, idempotencyKey, bookedTransactionId),
     c.env.DB.prepare("UPDATE loans SET outstanding = ?, status = ? WHERE id = ? AND user_id = ?").bind(
       balanceAfter,
       nextStatus,
@@ -255,14 +275,6 @@ loans.post("/:id/pay", async (c) => {
       user.sub,
     ),
   ];
-  if (logTransaction) {
-    stmts.push(
-      c.env.DB.prepare(
-        `INSERT INTO transactions (user_id, type, amount, category, note, occurred_on)
-         VALUES (?, 'expense', ?, 'Loan EMI', ?, ?)`,
-      ).bind(user.sub, payment, `${loan.name} EMI`, paidOn),
-    );
-  }
 
   // The UNIQUE(loan_id, idempotency_key) index is the real guard: two requests
   // racing past the SELECT above both reach here, and the second one's INSERT
@@ -281,6 +293,13 @@ loans.post("/:id/pay", async (c) => {
         balance_after: number;
       }>();
     if (!replay) throw e;
+    // The batch lost to a concurrent request, so the expense written above
+    // belongs to nothing. Remove it rather than leaving a duplicate.
+    if (bookedTransactionId !== null) {
+      await c.env.DB.prepare("DELETE FROM transactions WHERE id = ? AND user_id = ?")
+        .bind(bookedTransactionId, user.sub)
+        .run();
+    }
     const current = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
       .bind(id, user.sub)
       .first<LoanRow>();
@@ -395,12 +414,24 @@ loans.post("/:id/prepay", async (c) => {
   const interestSaved = before.totalInterest - (after?.totalInterest ?? 0);
   const monthsSaved = before.months - (after?.months ?? 0);
 
+  // Expense first, so the payment can hold its id — see the EMI path above.
+  const bookedTransactionId = logTransaction
+    ? (
+        await c.env.DB.prepare(
+          `INSERT INTO transactions (user_id, type, amount, category, note, occurred_on)
+           VALUES (?, 'expense', ?, 'Loan prepayment', ?, ?) RETURNING id`,
+        )
+          .bind(user.sub, amountPaise, `${loan.name} prepayment`, paidOn)
+          .first<{ id: number }>()
+      )?.id ?? null
+    : null;
+
   const stmts = [
     c.env.DB.prepare(
       `INSERT INTO loan_payments
-         (loan_id, user_id, amount, interest_part, principal_part, balance_after, paid_on, idempotency_key, kind)
-       VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'prepayment')`,
-    ).bind(id, user.sub, amountPaise, amountPaise, balanceAfter, paidOn, idempotencyKey),
+         (loan_id, user_id, amount, interest_part, principal_part, balance_after, paid_on, idempotency_key, kind, transaction_id)
+       VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'prepayment', ?)`,
+    ).bind(id, user.sub, amountPaise, amountPaise, balanceAfter, paidOn, idempotencyKey, bookedTransactionId),
     c.env.DB.prepare("UPDATE loans SET outstanding = ?, status = ? WHERE id = ? AND user_id = ?").bind(
       balanceAfter,
       nextStatus,
@@ -408,14 +439,6 @@ loans.post("/:id/prepay", async (c) => {
       user.sub,
     ),
   ];
-  if (logTransaction) {
-    stmts.push(
-      c.env.DB.prepare(
-        `INSERT INTO transactions (user_id, type, amount, category, note, occurred_on)
-         VALUES (?, 'expense', ?, 'Loan prepayment', ?, ?)`,
-      ).bind(user.sub, amountPaise, `${loan.name} prepayment`, paidOn),
-    );
-  }
 
   try {
     await c.env.DB.batch(stmts);
@@ -427,6 +450,13 @@ loans.post("/:id/prepay", async (c) => {
       .bind(id, idempotencyKey)
       .first<{ amount: number; principal_part: number; balance_after: number }>();
     if (!replay) throw e;
+    // The batch lost to a concurrent request, so the expense written above
+    // belongs to nothing. Remove it rather than leaving a duplicate.
+    if (bookedTransactionId !== null) {
+      await c.env.DB.prepare("DELETE FROM transactions WHERE id = ? AND user_id = ?")
+        .bind(bookedTransactionId, user.sub)
+        .run();
+    }
     const current = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
       .bind(id, user.sub)
       .first<LoanRow>();
@@ -456,6 +486,89 @@ loans.post("/:id/prepay", async (c) => {
       interest: toRupees(interestSaved),
       months: monthsSaved,
       closed: nextStatus === "closed",
+    },
+  });
+});
+
+/**
+ * DELETE /api/loans/:id/payments/:paymentId — undo a payment.
+ *
+ * Recording a payment writes three things: the payment row, a reduced balance,
+ * and an expense. Nothing could take any of them back. Deleting the expense in
+ * the Money module looked like an undo but only removed one third of it, leaving
+ * the loan still believing it had been paid — which is exactly how a balance and
+ * a spending history end up disagreeing.
+ *
+ * Only the most recent payment can be undone. Every earlier row stores the
+ * balance as it stood after it, so removing one from the middle would leave
+ * every later row describing a history that never happened.
+ */
+loans.delete("/:id/payments/:paymentId", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  const paymentId = Number(c.req.param("paymentId"));
+  if (!Number.isInteger(id) || !Number.isInteger(paymentId))
+    throw new HTTPException(400, { message: "Invalid id" });
+
+  const loan = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+  if (!loan) throw new HTTPException(404, { message: "Loan not found" });
+
+  const latest = await c.env.DB.prepare(
+    "SELECT * FROM loan_payments WHERE loan_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1",
+  )
+    .bind(id, user.sub)
+    .first<{ id: number; principal_part: number; transaction_id: number | null }>();
+
+  if (!latest) throw new HTTPException(404, { message: "No payments to undo" });
+  if (latest.id !== paymentId)
+    throw new HTTPException(400, {
+      message: "Only the most recent payment can be undone — later entries depend on it.",
+    });
+
+  // Putting the principal back is the whole reversal; interest was never part
+  // of the balance.
+  const restored = loan.outstanding + latest.principal_part;
+
+  const stmts = [
+    c.env.DB.prepare("DELETE FROM loan_payments WHERE id = ? AND user_id = ?").bind(
+      paymentId,
+      user.sub,
+    ),
+    // Reopens the loan if this payment was the one that closed it.
+    c.env.DB.prepare("UPDATE loans SET outstanding = ?, status = 'active' WHERE id = ? AND user_id = ?").bind(
+      restored,
+      id,
+      user.sub,
+    ),
+  ];
+
+  /*
+    Payments recorded before the link existed have no transaction_id, and a
+    payment whose expense was already deleted by hand has a dangling one. Both
+    are fine: the delete simply matches nothing.
+  */
+  if (latest.transaction_id !== null) {
+    stmts.push(
+      c.env.DB.prepare("DELETE FROM transactions WHERE id = ? AND user_id = ?").bind(
+        latest.transaction_id,
+        user.sub,
+      ),
+    );
+  }
+
+  await c.env.DB.batch(stmts);
+
+  const updated = await c.env.DB.prepare("SELECT * FROM loans WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
+    .first<LoanRow>();
+
+  return c.json({
+    loan: serialize(updated!, await paidCountFor(c.env.DB, id)),
+    reversed: {
+      principal: toRupees(latest.principal_part),
+      expense_removed: latest.transaction_id !== null,
     },
   });
 });

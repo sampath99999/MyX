@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Loader2, Percent, Check } from "lucide-react";
+import { Loader2, Percent, Check, Undo2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, formatMoney, type Loan, type LoanScheduleRow, type LoanPayment } from "@/lib/api";
+import LoanSimulator from "@/components/LoanSimulator";
 import { cn } from "@/lib/utils";
 
 export default function LoanDetailsDialog({
@@ -24,12 +25,30 @@ export default function LoanDetailsDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"schedule" | "history">("schedule");
+  const [undoing, setUndoing] = useState(false);
   const [loan, setLoan] = useState<Loan | null>(null);
   const [schedule, setSchedule] = useState<LoanScheduleRow[]>([]);
   const [payments, setPayments] = useState<LoanPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [newRate, setNewRate] = useState("");
   const [savingRate, setSavingRate] = useState(false);
+
+  /*
+    Undo puts the principal back, reopens the loan if this payment closed it,
+    and removes the expense it booked. Deleting that expense from the Money
+    module never did this — it left the balance reduced with no record of the
+    money leaving.
+  */
+  async function undoPayment(paymentId: number) {
+    setUndoing(true);
+    try {
+      await api.undoLoanPayment(loanId, paymentId);
+      await load();
+      onChanged?.();
+    } finally {
+      setUndoing(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -102,6 +121,8 @@ export default function LoanDetailsDialog({
               </Button>
             </form>
 
+            <LoanSimulator loan={loan} />
+
             {/* Tabs */}
             <div className="flex gap-1 border-b border-border/50">
               {(["schedule", "history"] as const).map((t) => (
@@ -130,6 +151,7 @@ export default function LoanDetailsDialog({
                       <th className="px-3 py-2 text-right font-medium">Interest</th>
                       <th className="px-3 py-2 text-right font-medium">Principal</th>
                       <th className="px-3 py-2 text-right font-medium">Balance</th>
+                      <th className="px-2 py-2" />
                     </tr>
                   </thead>
                   <tbody>
@@ -155,15 +177,41 @@ export default function LoanDetailsDialog({
                       <th className="px-3 py-2 text-right font-medium">Interest</th>
                       <th className="px-3 py-2 text-right font-medium">Principal</th>
                       <th className="px-3 py-2 text-right font-medium">Balance</th>
+                      <th className="px-2 py-2" />
                     </tr>
                   </thead>
                   <tbody>
                     {payments.map((p) => (
                       <tr key={p.id} className="border-t border-border/40 tabular-nums">
-                        <td className="px-3 py-2 text-muted-foreground">{p.paid_on}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {p.paid_on}
+                          {p.kind === "prepayment" && (
+                            <span className="ml-2 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                              prepaid
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-right text-rose-300/90">{formatMoney(p.interest_part)}</td>
                         <td className="px-3 py-2 text-right text-emerald-300/90">{formatMoney(p.principal_part)}</td>
                         <td className="px-3 py-2 text-right">{formatMoney(p.balance_after)}</td>
+                        <td className="px-2 py-2 text-right">
+                          {/* Only the newest can go back: every earlier row records the
+                              balance as it stood after it. */}
+                          {p.can_undo && (
+                            <button
+                              onClick={() => undoPayment(p.id)}
+                              disabled={undoing}
+                              title="Undo this payment and its expense"
+                              className="text-muted-foreground/60 transition-colors hover:text-destructive disabled:opacity-50"
+                            >
+                              {undoing ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Undo2 className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
