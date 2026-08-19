@@ -187,6 +187,41 @@ export const api = {
       } | null;
     }>("/api/dashboard/summary"),
 
+  /*
+    ----- Admin -----
+    Owner-only. The API answers 404 to anyone not flagged as an admin in the
+    database, so a non-admin cannot tell these routes exist.
+  */
+  adminSession: () =>
+    request<{ unlocked: boolean; unlocked_until: number | null }>("/api/admin/session"),
+
+  adminUnlock: () => request<{ sent: true }>("/api/admin/unlock", { method: "POST" }),
+
+  adminUnlockVerify: (code: string) =>
+    request<{ unlocked_until: number }>("/api/admin/unlock/verify", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+
+  adminStats: () =>
+    request<{
+      users: { total: number; verified: number; digest_on: number; new_this_week: number };
+      content: Record<string, number>;
+      signups: { day: string; n: number }[];
+      digests: { sent_total: number; sent_today: number };
+    }>("/api/admin/stats"),
+
+  adminHealth: () =>
+    request<{ health: Record<string, number | string | null>; checked_at: number }>(
+      "/api/admin/health",
+    ),
+
+  adminErrors: (includeResolved = false) =>
+    request<{ errors: unknown[] }>(`/api/admin/errors${includeResolved ? "?include=resolved" : ""}`),
+
+  adminResolveError: (fingerprint: string) =>
+    request<{ ok: true }>(`/api/admin/errors/${fingerprint}/resolve`, { method: "POST" }),
+
   // ----- Money -----
   listTransactions: (params?: { limit?: number; type?: "income" | "expense" }) => {
     const q = new URLSearchParams();

@@ -24,6 +24,8 @@ const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const VerifyEmail = lazy(() => import("@/pages/VerifyEmail"));
+// Unlinked and never prerendered — see pages/Admin.tsx.
+const Admin = lazy(() => import("@/pages/Admin"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const MoneyLayout = lazy(() => import("@/pages/money/MoneyLayout"));
 const MoneyOverview = lazy(() => import("@/pages/money/MoneyOverview"));
@@ -111,6 +113,14 @@ export function AppRoutes() {
             <PublicOnly>
               <Login />
             </PublicOnly>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <Protected>
+              <Admin />
+            </Protected>
           }
         />
         <Route

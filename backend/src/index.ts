@@ -17,9 +17,11 @@ import folderRoutes from "./routes/folders";
 import noteRoutes from "./routes/notes";
 import checklistRoutes from "./routes/checklists";
 import memoryRoutes from "./routes/memories";
+import adminRoutes from "./routes/admin";
 import { requireAuth } from "./middleware";
 import { apiRateLimit } from "./lib/apilimit";
 import { runDailyMaintenance } from "./lib/usage";
+import { recordError } from "./lib/errorlog";
 import { isAllowedOrigin } from "./lib/origins";
 import type { AppBindings, Env } from "./types";
 
@@ -60,6 +62,7 @@ app.route("/api/folders", folderRoutes);
 app.route("/api/notes", noteRoutes);
 app.route("/api/checklists", checklistRoutes);
 app.route("/api/memories", memoryRoutes);
+app.route("/api/admin", adminRoutes);
 
 // Dashboard rollup across every module.
 app.get("/api/dashboard/summary", requireAuth, async (c) => {
@@ -181,13 +184,52 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
   });
 });
 
-// Uniform JSON error responses.
+/*
+  Uniform JSON error responses, and the only place exceptions get recorded.
+
+  Anything that reached here used to print to the Worker log and vanish unless
+  someone happened to be tailing at that moment, so "did anything break
+  overnight" was unanswerable. 5xx and 429 are stored; 4xx are not, because a
+  client sending a bad date is not a fault to investigate.
+
+  Recording runs after the response is decided and never blocks it — a failure
+  to log a failure must not change what the user sees.
+*/
 app.onError((err, c) => {
-  if (err instanceof HTTPException) {
-    return c.json({ error: err.message }, err.status);
+  const status = err instanceof HTTPException ? err.status : 500;
+  const body =
+    err instanceof HTTPException
+      ? { error: err.message }
+      : { error: "Internal server error" };
+
+  if (status >= 500 || status === 429) {
+    if (status >= 500) console.error("Unhandled error:", err);
+
+    let userId: number | undefined;
+    try {
+      userId = c.get("user")?.sub;
+    } catch {
+      // Unauthenticated route — no user to attribute it to.
+    }
+
+    const record = recordError(c.env, {
+      error: err,
+      method: c.req.method,
+      pathname: new URL(c.req.url).pathname,
+      status,
+      userId,
+    });
+
+    // Hono's executionCtx getter throws when there is no ExecutionContext
+    // (tests, some runtimes), so this cannot be optional-chained.
+    try {
+      c.executionCtx.waitUntil(record);
+    } catch {
+      void record;
+    }
   }
-  console.error("Unhandled error:", err);
-  return c.json({ error: "Internal server error" }, 500);
+
+  return c.json(body, status as 500);
 });
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));

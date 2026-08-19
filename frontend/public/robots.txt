@@ -13,5 +13,6 @@ Disallow: /notes
 Disallow: /checklists
 Disallow: /memories
 Disallow: /login
+Disallow: /admin
 
 Sitemap: https://myx.samchitech.com/sitemap.xml

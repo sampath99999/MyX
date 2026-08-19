@@ -100,8 +100,17 @@ goals.post("/:id/contribute", async (c) => {
   const amount = Number(body?.amount);
 
   if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+  /*
+    MAX_AMOUNT is not decoration. 1e308 is a finite number, so it passed the
+    check below, and then toPaise() multiplied it past Number.MAX_VALUE to
+    Infinity — which binds as NULL and blew up on a NOT NULL constraint as a
+    500. The admin error log caught it the first time it was tried.
+  */
+  const MAX_AMOUNT = 1e12; // ₹1 lakh crore; far past anything real
   if (!Number.isFinite(amount) || amount === 0)
     throw new HTTPException(400, { message: "amount must be a non-zero number" });
+  if (Math.abs(amount) > MAX_AMOUNT)
+    throw new HTTPException(400, { message: "amount is out of range" });
 
   const goal = await c.env.DB.prepare("SELECT * FROM goals WHERE id = ? AND user_id = ?")
     .bind(id, user.sub)
