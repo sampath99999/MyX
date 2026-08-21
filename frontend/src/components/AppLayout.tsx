@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { Plus, MailWarning } from "lucide-react";
+import Dock from "@/components/nav/Dock";
 import { useAuth } from "@/lib/auth";
 import AppHeader from "@/components/AppHeader";
 import CommandPalette from "@/components/CommandPalette";
@@ -17,8 +18,9 @@ import { announceDataChanged } from "@/lib/useAuthenticatedLoad";
   module drew its own strip of tabs underneath, and the app had three
   navigation surfaces on screen at once.
 
-  Both levels now live in the header. See nav/ModuleBar.tsx for the desktop
-  version and MobileNav.tsx for the drawer that replaces it on a phone.
+  What is here instead: a dock floating over the page on a desktop
+  (nav/Dock.tsx), the launcher on a phone and on the G key (nav/Launcher.tsx),
+  and a header that says where you are rather than listing where you could go.
 */
 
 export default function AppLayout() {
@@ -94,9 +96,17 @@ export default function AppLayout() {
           opening a note from halfway down the list left the note scrolled
           halfway down too.
         */}
-        <main id="main" key={pathname} className="min-h-0 flex-1 overflow-y-auto">
+        {/*
+          `pb-24` on desktop is the dock's rent. It floats over the page rather
+          than taking a column of it, which is the point — but a page that ends
+          flush with the viewport would end underneath it, so the scroller
+          leaves the last inch clear.
+        */}
+        <main id="main" key={pathname} className="min-h-0 flex-1 overflow-y-auto md:pb-24">
           <Outlet />
         </main>
+
+        <Dock />
 
         {/*
           The one write worth a permanent target on a phone.
