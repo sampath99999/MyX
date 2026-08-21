@@ -7,6 +7,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { AppRoutes } from "@/App";
 import { PAGES, SITE_URL } from "@/lib/seo";
 import { FAQS } from "@/pages/EmiCalculator";
+import { CALCULATORS, CALCULATOR_BY_SLUG, pathFor } from "@/lib/calculators/registry";
 
 /*
   Build-time render of every public route (see scripts/prerender.mjs).
@@ -55,23 +56,93 @@ export function routesToPrerender() {
  * drifts, which is both a maintenance trap and against Google's guidelines.
  */
 export function structuredDataFor(path: string): string | null {
-  if (path !== "/emi-calculator") return null;
+  /*
+    Three shapes, for the three kinds of public page.
 
+    FAQPage is what can win a rich result; BreadcrumbList is what puts
+    "myx.samchitech.com › Calculators › SIP" under the blue link instead of a
+    raw URL; WebApplication describes the tool itself. All three describe copy
+    the page actually renders — a parallel version that drifts is both a
+    maintenance trap and against Google's structured data guidelines.
+  */
+  const breadcrumb = (name: string, url: string) => ({
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+      { "@type": "ListItem", position: 2, name: "Calculators", item: `${SITE_URL}/calculators` },
+      { "@type": "ListItem", position: 3, name, item: url },
+    ],
+  });
+
+  if (path === "/emi-calculator") {
+    const url = `${SITE_URL}/emi-calculator`;
+    return JSON.stringify({
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "FAQPage",
+          mainEntity: FAQS.map((f) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
+        },
+        breadcrumb("EMI calculator", url),
+        {
+          "@type": "WebApplication",
+          name: "MyX EMI Calculator",
+          url,
+          applicationCategory: "FinanceApplication",
+          operatingSystem: "Any",
+          offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },
+        },
+      ],
+    });
+  }
+
+  if (path === "/calculators") {
+    return JSON.stringify({
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "CollectionPage",
+          name: "Free financial calculators",
+          url: `${SITE_URL}/calculators`,
+        },
+        {
+          "@type": "ItemList",
+          itemListElement: CALCULATORS.map((c, i) => ({
+            "@type": "ListItem",
+            position: i + 1,
+            name: `${c.name} calculator`,
+            url: `${SITE_URL}${pathFor(c.slug)}`,
+          })),
+        },
+      ],
+    });
+  }
+
+  const slug = path.startsWith("/calculators/") ? path.slice("/calculators/".length) : null;
+  const calculator = slug ? CALCULATOR_BY_SLUG.get(slug) : undefined;
+  if (!calculator) return null;
+
+  const url = `${SITE_URL}${pathFor(calculator.slug)}`;
   return JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [
       {
         "@type": "FAQPage",
-        mainEntity: FAQS.map((f) => ({
+        mainEntity: calculator.faqs.map((f) => ({
           "@type": "Question",
           name: f.q,
           acceptedAnswer: { "@type": "Answer", text: f.a },
         })),
       },
+      breadcrumb(calculator.h1, url),
       {
         "@type": "WebApplication",
-        name: "MyX EMI Calculator",
-        url: `${SITE_URL}/emi-calculator`,
+        name: `MyX ${calculator.name} calculator`,
+        url,
         applicationCategory: "FinanceApplication",
         operatingSystem: "Any",
         offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },

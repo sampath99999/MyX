@@ -1,22 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { Hash, Loader2, Trash2, ChevronDown, List, LayoutGrid } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Hash, Trash2, ChevronDown, List, LayoutGrid, ClipboardList } from "lucide-react";
 import QuickAddTask from "@/components/tasks/QuickAddTask";
 import TaskItem from "@/components/tasks/TaskItem";
 import Board from "@/components/tasks/Board";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Meter } from "@/components/ui/stat";
+import { Segmented } from "@/components/ui/tabs";
+import { PageShell, PageHeader, EmptyState } from "@/components/ui/page";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 import { api, type Task } from "@/lib/api";
 import { useTasksContext } from "./context";
 import { cn } from "@/lib/utils";
 
 export default function Project() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const projectId = Number(id);
   const ctx = useTasksContext();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDone, setShowDone] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
+  const toast = useToast();
 
-  const project = useMemo(() => ctx.projects.find((p) => p.id === projectId), [ctx.projects, projectId]);
+  const project = useMemo(
+    () => ctx.projects.find((p) => p.id === projectId),
+    [ctx.projects, projectId],
+  );
   const view = project?.view ?? "list";
 
   const load = useCallback(async () => {
@@ -41,10 +55,19 @@ export default function Project() {
   }
 
   async function removeProject() {
-    if (!confirm("Delete this project? Its tasks move to Inbox.")) return;
+    const ok = await confirm({
+      title: `Delete "${project?.name ?? "this project"}"?`,
+      description:
+        tasks.length > 0
+          ? `Its ${tasks.length} task${tasks.length === 1 ? "" : "s"} move to the Inbox rather than being deleted.`
+          : "The project is empty, so nothing else changes.",
+      confirmLabel: "Delete project",
+    });
+    if (!ok) return;
     await api.deleteProject(projectId);
+    toast.success(`"${project?.name ?? "Project"}" deleted`, "Any tasks it held are in the Inbox.");
     ctx.reloadAll();
-    window.history.back();
+    navigate("/tasks");
   }
 
   const open = tasks.filter((t) => t.status === "open");
@@ -53,49 +76,39 @@ export default function Project() {
   const pct = total > 0 ? Math.round((done.length / total) * 100) : 0;
 
   return (
-    <div className={cn("p-6 lg:p-8 space-y-6", view === "list" && "mx-auto max-w-2xl")}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl"
-            style={{ backgroundColor: `${project?.color ?? "#8b5cf6"}22` }}
-          >
-            <Hash className="h-5 w-5" style={{ color: project?.color ?? "#8b5cf6" }} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">{project?.name ?? "Project"}</h1>
-            <p className="text-xs text-muted-foreground">
-              {open.length} open · {done.length} done{total > 0 ? ` · ${pct}%` : ""}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex rounded-lg border border-border/60 p-0.5">
-            <button
-              onClick={() => setView("list")}
-              className={cn("rounded-md px-2 py-1", view === "list" ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:text-foreground")}
-              title="List view"
-            >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setView("board")}
-              className={cn("rounded-md px-2 py-1", view === "board" ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:text-foreground")}
-              title="Board view"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-          </div>
-          <button
-            onClick={removeProject}
-            title="Delete project"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+    <PageShell width={view === "list" ? "narrow" : "wide"} className="space-y-5">
+      {confirmDialog}
+      <PageHeader
+        eyebrow={
+          <span className="flex items-center gap-1.5">
+            <Hash className="size-3" style={{ color: project?.color ?? "currentColor" }} />
+            Project
+          </span>
+        }
+        title={project?.name ?? "Project"}
+        description={
+          total > 0
+            ? `${open.length} open · ${done.length} done · ${pct}% complete`
+            : "Nothing in here yet"
+        }
+        actions={
+          <>
+            <Segmented
+              value={view}
+              onChange={(v) => setView(v)}
+              options={[
+                { value: "list", label: "List", icon: List },
+                { value: "board", label: "Board", icon: LayoutGrid },
+              ]}
+            />
+            <Button variant="outline" size="icon" onClick={removeProject} aria-label="Delete project">
+              <Trash2 />
+            </Button>
+          </>
+        }
+      />
+
+      {total > 0 && <Meter value={pct / 100} tone={pct === 100 ? "positive" : "default"} />}
 
       {view === "board" ? (
         <Board
@@ -107,15 +120,6 @@ export default function Project() {
         />
       ) : (
         <>
-          {total > 0 && (
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-background/60">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-primary to-violet-400 transition-all duration-500"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          )}
-
           <QuickAddTask
             spaceId={project?.space_id ?? ctx.currentSpace?.id ?? ctx.spaces[0]?.id}
             projectId={projectId}
@@ -126,18 +130,24 @@ export default function Project() {
           />
 
           {loading ? (
-            <div className="flex justify-center py-16">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            </div>
+            <SkeletonRows count={4} />
           ) : (
             <div className="space-y-4">
               {open.length === 0 && done.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-16 text-center">
-                  <div className="text-3xl">📋</div>
-                  <p className="text-sm text-muted-foreground">No tasks yet. Add your first above.</p>
-                </div>
+                <EmptyState
+                  icon={ClipboardList}
+                  title="No tasks yet"
+                  description="Add the first one above. Try the shorthand — “review the deck tomorrow !p1 #work” sets the date, priority and label in one line."
+                />
+              ) : open.length === 0 ? (
+                <EmptyState
+                  compact
+                  icon={ClipboardList}
+                  title="Everything here is done"
+                  description="Nothing open in this project. Completed tasks are below."
+                />
               ) : (
-                <div className="flex flex-col">
+                <Card className="overflow-hidden">
                   {open.map((t) => (
                     <TaskItem
                       key={t.id}
@@ -147,24 +157,32 @@ export default function Project() {
                       onLabelsChanged={ctx.reloadAll}
                     />
                   ))}
-                </div>
+                </Card>
               )}
 
               {done.length > 0 && (
                 <div>
                   <button
                     onClick={() => setShowDone((v) => !v)}
-                    className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    className="flex items-center gap-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    <ChevronDown className={cn("h-4 w-4 transition-transform", showDone && "rotate-180")} />
+                    <ChevronDown
+                      className={cn("size-4 transition-transform", showDone && "rotate-180")}
+                    />
                     {done.length} completed
                   </button>
                   {showDone && (
-                    <div className="flex flex-col opacity-70">
+                    <Card className="mt-1.5 overflow-hidden opacity-70">
                       {done.map((t) => (
-                        <TaskItem key={t.id} task={t} allLabels={ctx.labels} onChanged={reload} onLabelsChanged={ctx.reloadAll} />
+                        <TaskItem
+                          key={t.id}
+                          task={t}
+                          allLabels={ctx.labels}
+                          onChanged={reload}
+                          onLabelsChanged={ctx.reloadAll}
+                        />
                       ))}
-                    </div>
+                    </Card>
                   )}
                 </div>
               )}
@@ -172,6 +190,6 @@ export default function Project() {
           )}
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

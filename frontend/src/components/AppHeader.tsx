@@ -1,186 +1,140 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import {
-  Search,
-  Sun,
-  Moon,
-  Monitor,
-  Settings,
-  LogOut,
-  Sparkles,
-  ChevronDown,
-  Plus,
-} from "lucide-react";
-import { useAuth } from "@/lib/auth";
-import { useTheme, type Theme } from "@/lib/theme";
+import { Link, useLocation } from "react-router-dom";
+import { Search, Plus } from "lucide-react";
 import { announceDataChanged } from "@/lib/useAuthenticatedLoad";
 import NotificationsBell from "@/components/NotificationsBell";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
+import ThemeToggle from "@/components/ThemeToggle";
+import { LogoMark } from "@/components/Logo";
+import MobileNav from "@/components/MobileNav";
+import { NAV_GROUPS } from "@/components/navigation";
 
 /*
   The app's one persistent bar.
 
-  The sidebar used to carry navigation *and* the account card, the settings link
-  and sign-out, which meant those three did not exist at all on a phone — the
-  sidebar is hidden below md — and every page grew its own copy of them in its
-  own header. Now the sidebar is a menu and nothing else, and everything that is
-  not navigation lives here, at every breakpoint.
+  The sidebar carries navigation and, since the shell was rebuilt, the account.
+  What is left here is the two things you do rather than the places you go:
+  find something, and add something. Everything else — theme, notifications —
+  sits to the right of them, and the corner is no longer five controls deep.
+
+  The bar also says where you are, but only below `md`. The sidebar is hidden on
+  a phone, so without this the only clue to the current screen is the content
+  itself, and on a half-loaded page there is none. On desktop the rail already
+  says it and the page says it again in its own heading, so a third copy here
+  would be noise.
 */
 
-const THEME_CYCLE: { value: Theme; icon: typeof Sun; label: string }[] = [
-  { value: "system", icon: Monitor, label: "Theme: follows your device" },
-  { value: "light", icon: Sun, label: "Theme: light" },
-  { value: "dark", icon: Moon, label: "Theme: dark" },
+const SECTION_TITLES: [RegExp, string][] = [
+  [/^\/dashboard/, "Dashboard"],
+  [/^\/money\/transactions/, "Transactions"],
+  [/^\/money\/recurring/, "Bills"],
+  [/^\/money\/budgets/, "Budgets"],
+  [/^\/money\/loans/, "Loans"],
+  [/^\/money\/goals/, "Goals"],
+  [/^\/money\/investments/, "Investments"],
+  [/^\/money/, "Money"],
+  [/^\/tasks/, "Tasks"],
+  [/^\/notes/, "Notes"],
+  [/^\/memories/, "Memories"],
+  [/^\/checklists/, "Checklists"],
+  [/^\/settings/, "Settings"],
 ];
 
-function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const index = Math.max(
-    0,
-    THEME_CYCLE.findIndex((t) => t.value === theme),
-  );
-  const current = THEME_CYCLE[index];
-  const next = THEME_CYCLE[(index + 1) % THEME_CYCLE.length];
-  const Icon = current.icon;
-
-  return (
-    <button
-      onClick={() => setTheme(next.value)}
-      title={`${current.label} — click for ${next.value}`}
-      aria-label={current.label}
-      className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-    >
-      <Icon className="h-[1.15rem] w-[1.15rem]" />
-    </button>
-  );
-}
-
-function UserMenu() {
-  const { user, logout } = useAuth();
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const initial = (user?.name?.trim()?.[0] ?? "?").toUpperCase();
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label="Account menu"
-        className="flex items-center gap-1.5 rounded-lg p-1 transition-colors hover:bg-accent"
-      >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">
-          {initial}
-        </span>
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-xl border border-border/60 bg-popover shadow-2xl">
-          <div className="border-b border-border/60 px-4 py-3">
-            <p className="truncate text-sm font-medium">{user?.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
-          </div>
-          <Link
-            to="/settings"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-accent"
-          >
-            <Settings className="h-4 w-4 text-muted-foreground" />
-            Settings
-          </Link>
-          <button
-            onClick={logout}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-destructive"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </button>
-        </div>
-      )}
-    </div>
-  );
+function sectionTitle(pathname: string) {
+  return SECTION_TITLES.find(([re]) => re.test(pathname))?.[1] ?? "MyX";
 }
 
 export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }) {
+  const { pathname } = useLocation();
   /*
     ⌘ on a Mac, Ctrl everywhere else. Resolved once at render rather than
     guessed in the copy, because "Ctrl K" printed on a Mac reads as a bug.
   */
   const isMac =
-    typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent);
+    typeof navigator !== "undefined" &&
+    /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent);
 
   return (
     /*
-      `relative z-30` is load-bearing, not decoration. `glass` applies a
+      `relative z-30` is load-bearing, not decoration. `glass-bar` applies a
       backdrop-filter, and that makes this header its own stacking context — so
-      the dropdowns inside it were confined to it, and any later sibling in the
-      DOM (the dashboard cards) painted straight over them however high their own
-      z-index went. Ordering the header's whole context above the content is the
-      fix; raising the popovers could not be.
+      any later sibling in the DOM (the page content) would paint straight over
+      anything anchored here. Menus portal to <body>, and this keeps the header
+      itself above the scroller.
     */
-    <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border/50 glass px-3 sm:px-4">
-      {/* The wordmark lives in the sidebar on desktop; below md there is no
-          sidebar, so it belongs here instead. */}
-      <Link to="/dashboard" className="flex items-center gap-2 md:hidden" aria-label="MyX">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary glow">
-          <Sparkles className="h-4 w-4 text-primary-foreground" />
+    <header className="glass-bar relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 sm:px-4">
+      {/*
+        Phone only: the way into the menu, the mark, then the name of the
+        screen. The menu button leads because it is the control, and because a
+        left-hand drawer opening from a left-hand button is the only version of
+        this that feels connected to anything.
+      */}
+      <div className="flex min-w-0 items-center gap-1.5 md:hidden">
+        <MobileNav groups={NAV_GROUPS} />
+        <Link to="/dashboard" aria-label="MyX — dashboard" className="shrink-0">
+          <LogoMark size={26} />
+        </Link>
+        <span className="truncate text-sm font-semibold tracking-tight">
+          {sectionTitle(pathname)}
         </span>
-      </Link>
+      </div>
 
+      {/*
+        Search, as a field rather than an icon. It reads as somewhere to type,
+        which is what makes anyone try it in the first place, and the shortcut
+        printed on the right is how a keyboard user learns the shortcut exists.
+      */}
       <button
         onClick={onOpenSearch}
-        className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-border/60 px-3 text-sm text-muted-foreground transition-colors hover:bg-accent sm:max-w-sm"
+        className="hidden h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm text-muted-foreground transition-colors hover:border-ring/40 hover:bg-accent/50 md:flex md:max-w-sm"
       >
-        <Search className="h-4 w-4 shrink-0" />
-        <span className="truncate">Search everything</span>
-        <kbd className="ml-auto hidden shrink-0 rounded border border-border/60 px-1.5 py-0.5 font-sans text-[10px] sm:block">
+        <Search className="size-4 shrink-0" />
+        <span className="truncate">Search everything…</span>
+        <kbd className="tnum ml-auto hidden shrink-0 rounded border border-border px-1.5 py-px font-sans text-[10px] text-muted-foreground sm:block">
           {isMac ? "⌘" : "Ctrl"} K
         </kbd>
       </button>
 
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex items-center gap-0.5">
+        {/* Search collapses to its icon below md, where the field would eat the
+            whole bar. */}
+        <button
+          onClick={onOpenSearch}
+          aria-label="Search"
+          className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
+        >
+          <Search className="size-[1.15rem]" />
+        </button>
+
         {/*
           Quick add was on the dashboard only, which is the one screen where you
           are least likely to be when you remember an expense. It is the app's
           single most-used write, so it belongs next to search — reachable from
-          anywhere, and never in the way.
-
-          The label collapses to the icon below sm; the dialog is the same one
-          either way.
+          anywhere, and never in the way. On a phone it is the floating button
+          in the shell instead, so this hides below md.
         */}
         <AddTransactionDialog
           onCreated={announceDataChanged}
           trigger={
             <button
               title="Add a transaction"
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 sm:px-3.5"
+              className="mr-1.5 hidden h-9 items-center gap-1.5 rounded-lg bg-foreground px-3 text-[0.8125rem] font-medium text-background transition-opacity hover:opacity-90 md:flex"
             >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Quick add</span>
+              <Plus className="size-4" />
+              Add
             </button>
           }
         />
 
-        <div className="mx-1 h-5 w-px bg-border/60" />
-
-        <ThemeToggle />
+        {/*
+          Theme and the account are in the drawer on a phone, so they are not
+          here as well. The right-hand corner had six controls at 320px, which
+          left the screen name about seventy pixels to truncate into; it now has
+          two, and the title has room to actually say where you are.
+        */}
+        <span className="hidden md:block">
+          <ThemeToggle />
+        </span>
         <NotificationsBell />
-        <UserMenu />
       </div>
     </header>
   );

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
+import { ToastProvider } from "@/components/ui/toast";
 import AppLayout from "@/components/AppLayout";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { syncDocumentMeta } from "@/lib/seo";
@@ -18,6 +19,13 @@ import Landing from "@/pages/Landing";
 import EmiCalculator from "@/pages/EmiCalculator";
 import Privacy from "@/pages/Privacy";
 import Terms from "@/pages/Terms";
+/*
+  The calculators are public, prerendered and heavily interlinked, so they share
+  the landing page's eager treatment: a lazy chunk here would mean a crawler (and
+  a visitor arriving from search) waiting on a second request for the content
+  that is the entire reason the page exists.
+*/
+import CalculatorsHub, { CalculatorRoute } from "@/pages/calculators/CalculatorsHub";
 
 const Login = lazy(() => import("@/pages/Login"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
@@ -60,9 +68,22 @@ function FullScreenLoader() {
 }
 
 function Protected({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, verificationRequired } = useAuth();
+  const { pathname } = useLocation();
   if (loading) return <FullScreenLoader />;
   if (!user) return <Navigate to="/login" replace />;
+  /*
+    When the server locks unverified accounts out of their data, the app has to
+    say so rather than let them in and fail. Skipping the code at signup used to
+    land people on a dashboard where every panel returned 403 and the only clue
+    was a banner — the door was locked, and the UI pretended otherwise.
+
+    `=== false` rather than a falsy check: the field is absent on sessions from
+    before verification shipped, and those accounts are not unverified.
+  */
+  if (verificationRequired && user.email_verified === false && pathname !== "/verify-email") {
+    return <Navigate to="/verify-email" replace />;
+  }
   return <>{children}</>;
 }
 
@@ -96,6 +117,8 @@ export function AppRoutes() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/emi-calculator" element={<EmiCalculator />} />
+        <Route path="/calculators" element={<CalculatorsHub />} />
+        <Route path="/calculators/:slug" element={<CalculatorRoute />} />
 
         {/* Reachable while signed out — a locked-out user has no session. */}
         <Route
@@ -178,11 +201,13 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </AuthProvider>
+        </ToastProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

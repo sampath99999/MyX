@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, X, SlidersHorizontal, ArrowUpDown } from "lucide-react";
+import { Segmented } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { TransactionQuery, TransactionSort } from "@/lib/api";
 
 /*
@@ -64,8 +67,10 @@ export function rangeBounds(range: DateRange): { from?: string; to?: string } {
   }
 }
 
+/* Matches ui/input so a native select and a shadcn field sit on the same line
+   without one being two pixels taller than the other. */
 const control =
-  "rounded-lg border border-border/60 bg-transparent px-3 py-2 text-sm outline-none focus:border-ring";
+  "h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm outline-none transition-[color,box-shadow,border-color] focus:border-ring focus:ring-[3px] focus:ring-ring/25";
 
 export default function TransactionFilters({
   query,
@@ -129,23 +134,11 @@ export default function TransactionFilters({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         {/* Type — the one filter used often enough to deserve permanent buttons. */}
-        <div role="radiogroup" aria-label="Type" className="flex rounded-lg border border-border/60 p-0.5">
-          {TYPES.map((t) => (
-            <button
-              key={t.value || "all"}
-              role="radio"
-              aria-checked={(query.type ?? "") === t.value}
-              onClick={() => onChange({ ...query, type: t.value || undefined })}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                (query.type ?? "") === t.value
-                  ? "bg-primary/15 text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          value={query.type ?? ""}
+          onChange={(v) => onChange({ ...query, type: v || undefined })}
+          options={TYPES.map((t) => ({ value: t.value, label: t.label }))}
+        />
 
         <select
           aria-label="Date range"
@@ -161,13 +154,13 @@ export default function TransactionFilters({
         </select>
 
         <div className="relative min-w-0 flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Search notes and categories"
             aria-label="Search transactions"
-            className={`${control} w-full pl-9 pr-8`}
+            className={cn(control, "w-full pl-9 pr-8 placeholder:text-muted-foreground/60")}
           />
           {text && (
             <button
@@ -183,26 +176,25 @@ export default function TransactionFilters({
         <button
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          className={`flex items-center gap-1.5 ${control} font-medium transition-colors hover:bg-accent`}
+          className={cn(control, "flex items-center gap-1.5 font-medium hover:bg-accent")}
         >
-          <SlidersHorizontal className="h-4 w-4" />
-          More
-          {activeCount > 0 && (
-            <span className="rounded-full bg-primary/20 px-1.5 text-xs font-semibold text-primary">
-              {activeCount}
-            </span>
-          )}
+          <SlidersHorizontal className="size-3.5" />
+          Filters
+          {activeCount > 0 && <Badge variant="solid">{activeCount}</Badge>}
         </button>
 
         {activeCount > 0 && (
-          <button onClick={clearAll} className="text-sm font-medium text-primary hover:underline">
+          <button
+            onClick={clearAll}
+            className="text-sm font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
             Clear
           </button>
         )}
       </div>
 
       {expanded && (
-        <div className="space-y-4 rounded-xl border border-border/60 p-4">
+        <div className="animate-in-up space-y-4 rounded-xl border border-border bg-card p-4">
           {/*
             Three columns, not four. The two date fields used to live here as a
             fourth, and a native date input will not render below about 150px —
@@ -216,7 +208,7 @@ export default function TransactionFilters({
               <select
                 value={query.category ?? ""}
                 onChange={(e) => onChange({ ...query, category: e.target.value || undefined })}
-                className={`${control} w-full`}
+                className={cn(control, "w-full")}
               >
                 <option value="">Every category</option>
                 {categories.map((c) => (
@@ -235,7 +227,7 @@ export default function TransactionFilters({
               <select
                 value={query.sort ?? "date_desc"}
                 onChange={(e) => onChange({ ...query, sort: e.target.value as TransactionSort })}
-                className={`${control} w-full`}
+                className={cn(control, "w-full")}
               >
                 {SORTS.map((s) => (
                   <option key={s.value} value={s.value}>
@@ -258,7 +250,7 @@ export default function TransactionFilters({
                   onChange={(e) =>
                     onChange({ ...query, min: e.target.value === "" ? undefined : Number(e.target.value) })
                   }
-                  className={`${control} w-full min-w-0`}
+                  className={cn(control, "w-full min-w-0")}
                 />
                 <span className="shrink-0 text-muted-foreground">–</span>
                 <input
@@ -271,7 +263,7 @@ export default function TransactionFilters({
                   onChange={(e) =>
                     onChange({ ...query, max: e.target.value === "" ? undefined : Number(e.target.value) })
                   }
-                  className={`${control} w-full min-w-0`}
+                  className={cn(control, "w-full min-w-0")}
                 />
               </div>
             </div>
@@ -284,7 +276,7 @@ export default function TransactionFilters({
             control that mostly exists to be ignored.
           */}
           {range === "custom" && (
-            <div className="space-y-1.5 border-t border-border/40 pt-4">
+            <div className="space-y-1.5 border-t border-border pt-4">
               <span className="text-xs font-medium text-muted-foreground">Between</span>
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -292,7 +284,7 @@ export default function TransactionFilters({
                   aria-label="From date"
                   value={query.from ?? ""}
                   onChange={(e) => onChange({ ...query, from: e.target.value || undefined })}
-                  className={`${control} min-w-[9.5rem] flex-1 sm:max-w-[12rem] sm:flex-none`}
+                  className={cn(control, "min-w-[9.5rem] flex-1 sm:max-w-[12rem] sm:flex-none")}
                 />
                 <span className="shrink-0 text-muted-foreground">–</span>
                 <input
@@ -300,7 +292,7 @@ export default function TransactionFilters({
                   aria-label="To date"
                   value={query.to ?? ""}
                   onChange={(e) => onChange({ ...query, to: e.target.value || undefined })}
-                  className={`${control} min-w-[9.5rem] flex-1 sm:max-w-[12rem] sm:flex-none`}
+                  className={cn(control, "min-w-[9.5rem] flex-1 sm:max-w-[12rem] sm:flex-none")}
                 />
               </div>
             </div>

@@ -1,18 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LogOut, Sun, Inbox, CalendarRange, Hash, Plus, Layers, Loader2, Tag, HelpCircle } from "lucide-react";
+import {
+  Sun,
+  Inbox,
+  CalendarRange,
+  Hash,
+  Plus,
+  Layers,
+  Loader2,
+  Tag,
+  HelpCircle,
+  ChevronDown,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, type Space, type Project, type Label } from "@/lib/api";
 import NewProjectDialog from "@/components/tasks/NewProjectDialog";
 import NewSpaceDialog from "@/components/tasks/NewSpaceDialog";
 import TasksHelpDialog from "@/components/tasks/TasksHelpDialog";
+import { Menu, MenuItem, MenuLabel } from "@/components/ui/menu";
 import { todayISO, type TasksContextValue } from "./context";
 import { cn } from "@/lib/utils";
+
+/*
+  Tasks keeps its own rail: three views, then the user's projects and labels,
+  all scoped by the currently selected Space.
+
+  The space switcher used to be a wrapping row of pills at the top of that rail.
+  With four spaces it took three lines, and on a phone it was a horizontally
+  scrolling strip pinned above every screen. It is one control now — the thing
+  it always was, a scope selector — which frees the rail for the navigation and
+  gives the phone layout a header that fits.
+*/
 
 const SPACE_KEY = "myx.tasks.space";
 
 export default function TasksLayout() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [spaces, setSpaces] = useState<Space[]>([]);
@@ -52,7 +75,10 @@ export default function TasksLayout() {
     navigate("/tasks");
   }
 
-  const currentSpace = useMemo(() => spaces.find((s) => s.id === spaceId) ?? null, [spaces, spaceId]);
+  const currentSpace = useMemo(
+    () => spaces.find((s) => s.id === spaceId) ?? null,
+    [spaces, spaceId],
+  );
 
   const ctx: TasksContextValue = {
     spaceId,
@@ -66,83 +92,104 @@ export default function TasksLayout() {
   };
 
   const views = [
-    { to: "/tasks", end: true, label: "Today", icon: Sun, count: counts.today, accent: "text-amber-400" },
-    { to: "/tasks/upcoming", end: false, label: "Upcoming", icon: CalendarRange, count: counts.upcoming, accent: "text-violet-400" },
-    { to: "/tasks/inbox", end: false, label: "Inbox", icon: Inbox, count: counts.inbox, accent: "text-sky-400" },
+    { to: "/tasks", end: true, label: "Today", icon: Sun, count: counts.today },
+    {
+      to: "/tasks/upcoming",
+      end: false,
+      label: "Upcoming",
+      icon: CalendarRange,
+      count: counts.upcoming,
+    },
+    { to: "/tasks/inbox", end: false, label: "Inbox", icon: Inbox, count: counts.inbox },
   ];
 
-  const spacePills = (
-    <>
-      <button
-        onClick={() => pickSpace(null)}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors",
-          spaceId == null ? "border-primary/40 bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-accent",
-        )}
-      >
-        <Layers className="h-3.5 w-3.5" /> All
-      </button>
-      {spaces.map((s) => (
-        <button
-          key={s.id}
-          onClick={() => pickSpace(s.id)}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors",
-            spaceId === s.id ? "border-primary/40 bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-accent",
+  const spaceSwitcher = (
+    <Menu
+      align="start"
+      className="min-w-0"
+      trigger={
+        <button className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-border px-2.5 text-sm font-medium transition-colors hover:bg-accent">
+          {currentSpace ? (
+            <span className="shrink-0 text-base leading-none">{currentSpace.icon}</span>
+          ) : (
+            <Layers className="size-4 shrink-0 text-muted-foreground" />
           )}
-        >
-          <span>{s.icon}</span>
-          {s.name}
+          <span className="min-w-0 flex-1 truncate text-left">
+            {currentSpace ? currentSpace.name : "All spaces"}
+          </span>
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
+      }
+    >
+      <MenuLabel>Scope</MenuLabel>
+      <MenuItem icon={Layers} onSelect={() => pickSpace(null)}>
+        All spaces
+      </MenuItem>
+      {spaces.map((s) => (
+        <MenuItem key={s.id} onSelect={() => pickSpace(s.id)}>
+          <span className="flex items-center gap-2">
+            <span className="text-base leading-none">{s.icon}</span>
+            {s.name}
+          </span>
+        </MenuItem>
       ))}
-    </>
+    </Menu>
   );
+
+  /*
+    "New space" is a button beside the switcher rather than the last row of it.
+    A dialog opened from inside the menu unmounts with the menu the instant the
+    row is clicked, so it would never appear.
+  */
+  const newSpaceButton = (
+    <NewSpaceDialog
+      onCreated={reloadAll}
+      trigger={
+        <button
+          aria-label="New space"
+          title="New space"
+          className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Plus className="size-4" />
+        </button>
+      }
+    />
+  );
+
+  const navItem = (isActive: boolean) =>
+    cn(
+      "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+      isActive
+        ? "bg-accent text-foreground"
+        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+    );
 
   return (
     <div className="flex min-h-full">
-      {/* ---------- Tasks sidebar ---------- */}
-      <aside className="hidden md:flex md:w-64 shrink-0 flex-col gap-4 border-r border-border/50 p-4 sticky top-0 self-start max-h-dvh overflow-y-auto">
-        <div>
-          <div className="mb-2 flex items-center justify-between px-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Spaces</span>
-            <div className="flex items-center gap-1.5">
-              <TasksHelpDialog
-                trigger={
-                  <button className="text-muted-foreground hover:text-foreground" title="About Tasks">
-                    <HelpCircle className="h-3.5 w-3.5" />
-                  </button>
-                }
-              />
-              <NewSpaceDialog
-                onCreated={reloadAll}
-                trigger={
-                  <button className="text-muted-foreground hover:text-foreground" title="New space">
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                }
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-1.5">{spacePills}</div>
+      {/* ---------- Tasks rail ---------- */}
+      <aside className="sticky top-0 hidden max-h-dvh w-60 shrink-0 flex-col gap-5 self-start overflow-y-auto border-r border-border p-3 md:flex">
+        <div className="flex items-center gap-1.5">
+          {spaceSwitcher}
+          {newSpaceButton}
+          <TasksHelpDialog
+            trigger={
+              <button
+                aria-label="About Tasks"
+                className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <HelpCircle className="size-4" />
+              </button>
+            }
+          />
         </div>
 
         <nav className="flex flex-col gap-0.5">
           {views.map((v) => (
-            <NavLink
-              key={v.to}
-              to={v.to}
-              end={v.end}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
-                  isActive ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                )
-              }
-            >
-              <v.icon className={cn("h-4 w-4", v.accent)} />
-              <span className="flex-1">{v.label}</span>
+            <NavLink key={v.to} to={v.to} end={v.end} className={({ isActive }) => navItem(isActive)}>
+              <v.icon className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{v.label}</span>
               {v.count > 0 && (
-                <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                <span className="tnum shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   {v.count}
                 </span>
               )}
@@ -152,37 +199,41 @@ export default function TasksLayout() {
 
         {/* Projects */}
         <div>
-          <div className="mb-1.5 flex items-center justify-between px-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Projects</span>
+          <div className="mb-1.5 flex items-center justify-between px-2.5">
+            <span className="eyebrow">Projects</span>
             <NewProjectDialog
               spaces={spaces}
               defaultSpaceId={spaceId ?? spaces[0]?.id}
               onCreated={reloadAll}
               trigger={
-                <button className="text-muted-foreground hover:text-foreground" title="New project">
-                  <Plus className="h-3.5 w-3.5" />
+                <button
+                  aria-label="New project"
+                  className="text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Plus className="size-3.5" />
                 </button>
               }
             />
           </div>
           <div className="flex flex-col gap-0.5">
             {projects.length === 0 ? (
-              <p className="px-2.5 py-2 text-xs text-muted-foreground/70">No projects yet.</p>
+              <p className="px-2.5 py-1.5 text-xs text-muted-foreground/70">
+                No projects in this space yet.
+              </p>
             ) : (
               projects.map((p) => (
                 <NavLink
                   key={p.id}
                   to={`/tasks/project/${p.id}`}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
-                      isActive ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                    )
-                  }
+                  className={({ isActive }) => navItem(isActive)}
                 >
-                  <Hash className="h-4 w-4" style={{ color: p.color }} />
-                  <span className="flex-1 truncate">{p.name}</span>
-                  {p.open_count > 0 && <span className="text-[10px] font-semibold text-muted-foreground">{p.open_count}</span>}
+                  <Hash className="size-4 shrink-0" style={{ color: p.color }} />
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  {p.open_count > 0 && (
+                    <span className="tnum shrink-0 text-[10px] font-medium text-muted-foreground">
+                      {p.open_count}
+                    </span>
+                  )}
                 </NavLink>
               ))
             )}
@@ -192,23 +243,18 @@ export default function TasksLayout() {
         {/* Labels */}
         {labels.length > 0 && (
           <div>
-            <div className="mb-1.5 px-1">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Labels</span>
+            <div className="mb-1.5 px-2.5">
+              <span className="eyebrow">Labels</span>
             </div>
             <div className="flex flex-col gap-0.5">
               {labels.map((l) => (
                 <NavLink
                   key={l.id}
                   to={`/tasks/label/${l.id}`}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
-                      isActive ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                    )
-                  }
+                  className={({ isActive }) => navItem(isActive)}
                 >
-                  <Tag className="h-3.5 w-3.5" style={{ color: l.color }} />
-                  <span className="flex-1 truncate">{l.name}</span>
+                  <Tag className="size-3.5 shrink-0" style={{ color: l.color }} />
+                  <span className="min-w-0 flex-1 truncate">{l.name}</span>
                 </NavLink>
               ))}
             </div>
@@ -217,17 +263,58 @@ export default function TasksLayout() {
       </aside>
 
       {/* ---------- Content ---------- */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2 border-b border-border/50 glass px-4 py-3 md:hidden">
-          <div className="flex items-center gap-1.5 overflow-x-auto">{spacePills}</div>
-          <button onClick={logout} className="shrink-0 text-muted-foreground" title="Sign out">
-            <LogOut className="h-5 w-5" />
-          </button>
+      <div className="min-w-0 flex-1">
+        {/*
+          The phone header. It carries the two things the rail carries and the
+          app header cannot: which space you are scoped to, and how to reach the
+          three views without a sidebar.
+        */}
+        <div className="glass-bar sticky top-0 z-10 border-b border-border md:hidden">
+          <div className="flex items-center gap-2 px-3 py-2.5">
+            <div className="min-w-0 flex-1">{spaceSwitcher}</div>
+            <NewProjectDialog
+              spaces={spaces}
+              defaultSpaceId={spaceId ?? spaces[0]?.id}
+              onCreated={reloadAll}
+              trigger={
+                <button
+                  aria-label="New project"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <Plus className="size-4" />
+                </button>
+              }
+            />
+          </div>
+          <div className="flex gap-1 overflow-x-auto px-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {views.map((v) => (
+              <NavLink
+                key={v.to}
+                to={v.to}
+                end={v.end}
+                className={({ isActive }) =>
+                  cn(
+                    /* 30px tall on a phone, which is where this row only ever
+                       appears. h-9 puts it in range of a thumb without making
+                       the strip any wider. */
+                    "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[0.8125rem] font-medium transition-colors",
+                    isActive
+                      ? "border-transparent bg-foreground text-background"
+                      : "border-border text-muted-foreground",
+                  )
+                }
+              >
+                <v.icon className="size-3.5" />
+                {v.label}
+                {v.count > 0 && <span className="tnum">{v.count}</span>}
+              </NavLink>
+            ))}
+          </div>
         </div>
 
         {!ready ? (
           <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
           <Outlet context={ctx} />

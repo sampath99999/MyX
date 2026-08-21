@@ -1,63 +1,46 @@
-import { NavLink, Outlet } from "react-router-dom";
-import { LogOut } from "lucide-react";
-import { useAuth } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import { Outlet } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Receipt,
+  RefreshCw,
+  PiggyBank,
+  Landmark,
+  Target,
+  TrendingUp,
+} from "lucide-react";
+import { NavTabs } from "@/components/ui/tabs";
 
-const tabs = [
-  { to: "/money", label: "Dashboard", end: true },
-  { to: "/money/transactions", label: "Transactions" },
-  { to: "/money/recurring", label: "Recurring" },
-  { to: "/money/budgets", label: "Budgets" },
-  { to: "/money/loans", label: "Loans" },
-  { to: "/money/goals", label: "Goals" },
-  { to: "/money/investments", label: "Investments" },
+/*
+  Money's own navigation.
+
+  Seven destinations is more than a sidebar entry can hold, so the module keeps
+  its own row of tabs. It used to be a second page header — a title, a subtitle
+  and a mobile sign-out button repeating what the app header already showed —
+  above the tabs; the title is gone, because the tab row already says both that
+  this is Money and which part of it you are in.
+
+  Sticky, so switching between Budgets and Loans does not require scrolling back
+  up on a long page.
+*/
+
+const TABS = [
+  { to: "/money", label: "Overview", end: true, icon: LayoutDashboard },
+  { to: "/money/transactions", label: "Transactions", icon: Receipt },
+  { to: "/money/recurring", label: "Bills", icon: RefreshCw },
+  { to: "/money/budgets", label: "Budgets", icon: PiggyBank },
+  { to: "/money/loans", label: "Loans", icon: Landmark },
+  { to: "/money/goals", label: "Goals", icon: Target },
+  { to: "/money/investments", label: "Investments", icon: TrendingUp },
 ];
 
 export default function MoneyLayout() {
-  const { logout } = useAuth();
   return (
     <>
-      <header className="sticky top-0 z-10 glass border-b border-border/50">
-        <div className="flex items-center justify-between gap-4 px-6 pt-4">
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">Money</h1>
-            <p className="text-xs text-muted-foreground">Dashboard, transactions &amp; financial tools</p>
-          </div>
-          <button
-            onClick={logout}
-            className="md:hidden text-muted-foreground hover:text-destructive"
-            title="Sign out"
-          >
-            <LogOut className="h-5 w-5" />
-          </button>
+      <div className="glass-bar sticky top-0 z-20 border-b border-border px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[1400px]">
+          <NavTabs items={TABS} rule={false} />
         </div>
-
-        <nav className="flex gap-1 px-4">
-          {tabs.map((t) => (
-            <NavLink
-              key={t.to}
-              to={t.to}
-              end={t.end}
-              className={({ isActive }) =>
-                cn(
-                  "relative px-4 py-3 text-sm font-medium transition-colors",
-                  isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {t.label}
-                  {isActive && (
-                    <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-primary" />
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
-
+      </div>
       <Outlet />
     </>
   );

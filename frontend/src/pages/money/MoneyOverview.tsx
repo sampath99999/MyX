@@ -7,7 +7,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -27,42 +26,25 @@ import {
   Landmark,
   Target,
   AlertTriangle,
-  Sparkles,
   ArrowRight,
-  Loader2,
   Info,
   CheckCircle2,
-  Wallet2,
+  LineChart,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Stat, Meter } from "@/components/ui/stat";
+import { PageShell, Section, EmptyState } from "@/components/ui/page";
+import { SkeletonStats, Skeleton } from "@/components/ui/skeleton";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import LoadError from "@/components/LoadError";
 import { getCategoryIcon } from "@/components/CategoryPicker";
-import { api, formatMoney, type MoneyDashboardData } from "@/lib/api";
+import { api, formatMoney, formatMoneyShort, type MoneyDashboardData } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
+import { useChartTheme, type ChartTheme } from "@/lib/chart";
 import { cn } from "@/lib/utils";
-
-const PIE_COLORS = [
-  "#8b5cf6",
-  "#34d399",
-  "#fbbf24",
-  "#fb7185",
-  "#38bdf8",
-  "#a78bfa",
-  "#f472b6",
-  "#94a3b8",
-];
-
-const GRID = "oklch(0.28 0.02 275 / 0.35)";
-const AXIS = "oklch(0.68 0.02 275)";
-const TOOLTIP_BG = "oklch(0.2 0.014 275 / 0.95)";
-
-function formatShort(n: number) {
-  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
-  if (n >= 1000) return `₹${(n / 1000).toFixed(0)}k`;
-  return `₹${n}`;
-}
 
 function formatDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("en-IN", {
@@ -75,20 +57,22 @@ function ChartTooltip({
   active,
   payload,
   label,
+  theme,
 }: {
   active?: boolean;
   payload?: { name: string; value: number; color: string }[];
   label?: string;
+  theme: ChartTheme;
 }) {
   if (!active || !payload?.length) return null;
   return (
     <div
-      className="rounded-lg border border-border/60 px-3 py-2 text-xs shadow-xl"
-      style={{ background: TOOLTIP_BG }}
+      className="rounded-lg border px-3 py-2 text-xs shadow-pop"
+      style={{ background: theme.tooltipBg, borderColor: theme.tooltipBorder }}
     >
       <p className="mb-1.5 font-medium text-foreground">{label}</p>
       {payload.map((p) => (
-        <p key={p.name} className="tabular-nums" style={{ color: p.color }}>
+        <p key={p.name} className="tnum" style={{ color: p.color }}>
           {p.name}: {formatMoney(p.value)}
         </p>
       ))}
@@ -99,19 +83,21 @@ function ChartTooltip({
 function PieTooltip({
   active,
   payload,
+  theme,
 }: {
   active?: boolean;
   payload?: { payload: { category: string; amount: number; percent: number } }[];
+  theme: ChartTheme;
 }) {
   if (!active || !payload?.[0]) return null;
   const d = payload[0].payload;
   return (
     <div
-      className="rounded-lg border border-border/60 px-3 py-2 text-xs shadow-xl"
-      style={{ background: TOOLTIP_BG }}
+      className="rounded-lg border px-3 py-2 text-xs shadow-pop"
+      style={{ background: theme.tooltipBg, borderColor: theme.tooltipBorder }}
     >
       <p className="font-medium">{d.category}</p>
-      <p className="tabular-nums text-muted-foreground">
+      <p className="tnum text-muted-foreground">
         {formatMoney(d.amount)} · {d.percent}%
       </p>
     </div>
@@ -119,13 +105,26 @@ function PieTooltip({
 }
 
 function InsightIcon({ tone }: { tone: "info" | "warn" | "good" }) {
-  if (tone === "good") return <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />;
-  if (tone === "warn") return <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />;
-  return <Info className="h-4 w-4 shrink-0 text-sky-400" />;
+  if (tone === "good") return <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-400" />;
+  if (tone === "warn") return <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />;
+  return <Info className="mt-0.5 size-4 shrink-0 text-sky-400" />;
+}
+
+/** A "see the whole module" link, used as a section action six times over. */
+function ViewAll({ to, label = "View all" }: { to: string; label?: string }) {
+  return (
+    <Button variant="ghost" size="sm" asChild>
+      <Link to={to}>
+        {label}
+        <ArrowRight />
+      </Link>
+    </Button>
+  );
 }
 
 export default function MoneyOverview() {
   const [data, setData] = useState<MoneyDashboardData | null>(null);
+  const theme = useChartTheme();
 
   const load = useCallback(async () => {
     setData(await api.moneyDashboard());
@@ -135,17 +134,24 @@ export default function MoneyOverview() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
+      <PageShell className="space-y-6">
+        <Skeleton className="h-28 w-full rounded-xl" />
+        <SkeletonStats />
+        <div className="grid gap-4 xl:grid-cols-5">
+          <Skeleton className="h-80 rounded-xl xl:col-span-3" />
+          <Skeleton className="h-80 rounded-xl xl:col-span-2" />
+        </div>
+      </PageShell>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="p-6 lg:p-8">
-        <LoadError message={error ?? "Failed to load dashboard."} onRetry={reload} />
-      </div>
+      <PageShell>
+        <Card className="p-4">
+          <LoadError message={error ?? "Failed to load dashboard."} onRetry={reload} />
+        </Card>
+      </PageShell>
     );
   }
 
@@ -163,443 +169,494 @@ export default function MoneyOverview() {
   } = data;
   const netPositive = summary.netMonth >= 0;
 
-  const kpis = [
-    {
-      label: "Income (month)",
-      value: formatMoney(summary.monthIncome),
-      icon: TrendingUp,
-      accent: "text-emerald-400",
-      ring: "bg-emerald-500/10",
-    },
-    {
-      label: "Expenses (month)",
-      value: formatMoney(summary.monthExpense),
-      icon: TrendingDown,
-      accent: "text-rose-400",
-      ring: "bg-rose-500/10",
-    },
-    {
-      label: "Savings rate",
-      value: summary.monthIncome > 0 ? `${summary.savingsRate}%` : "—",
-      icon: PiggyBank,
-      accent: "text-violet-400",
-      ring: "bg-violet-500/10",
-    },
-    {
-      label: "Recurring / mo",
-      value: formatMoney(recurring.monthlyExpense),
-      icon: Repeat,
-      accent: "text-sky-400",
-      ring: "bg-sky-500/10",
-      hint: recurring.monthlyIncome > 0 ? `+${formatMoney(recurring.monthlyIncome)} in` : undefined,
-    },
-    {
-      label: "Loan outstanding",
-      value: loans.activeCount > 0 ? formatMoney(loans.outstanding) : "—",
-      icon: Landmark,
-      accent: "text-amber-400",
-      ring: "bg-amber-500/10",
-      hint: loans.activeCount > 0 ? `${formatMoney(loans.monthlyEmi)}/mo EMI` : undefined,
-    },
-    {
-      label: "Goals saved",
-      value: goals.totals.count > 0 ? formatMoney(goals.totals.saved) : "—",
-      icon: Target,
-      accent: "text-primary",
-      ring: "bg-primary/10",
-      hint:
-        goals.totals.count > 0
-          ? `${goals.totals.completed}/${goals.totals.count} complete`
-          : undefined,
-    },
-    {
-      label: "Portfolio value",
-      value: investments.count > 0 ? formatMoney(investments.current) : "—",
-      icon: Wallet2,
-      accent: investments.gain >= 0 ? "text-emerald-400" : "text-rose-400",
-      ring: investments.gain >= 0 ? "bg-emerald-500/10" : "bg-rose-500/10",
-      hint:
-        investments.count > 0
-          ? `${investments.gain >= 0 ? "+" : ""}${formatMoney(investments.gain)} (${investments.gainPercent >= 0 ? "+" : ""}${investments.gainPercent}%)`
-          : undefined,
-    },
-  ];
-
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      {/* Hero */}
-      <Card className="glass relative overflow-hidden p-6 lg:p-8 animate-in-up">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl" />
+    <PageShell className="space-y-6">
+      {/*
+        The balance band.
 
-        <div className="relative flex flex-wrap items-start justify-between gap-6">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              <Sparkles className="h-3.5 w-3.5" />
-              Money Dashboard
-            </div>
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Current balance</p>
-              <p className="text-4xl lg:text-5xl font-bold tracking-tight tabular-nums">
-                {formatMoney(summary.balance)}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium tabular-nums",
-                  netPositive ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400",
-                )}
-              >
-                {netPositive ? (
-                  <TrendingUp className="h-4 w-4" />
-                ) : (
-                  <TrendingDown className="h-4 w-4" />
-                )}
-                {netPositive ? "+" : ""}
-                {formatMoney(summary.netMonth)} this month
-              </span>
-              {summary.spendChangePct !== null && (
-                <span className="text-muted-foreground">
-                  vs last month:{" "}
-                  <span
-                    className={cn(
-                      "font-medium",
-                      summary.spendChangePct > 0 ? "text-rose-400" : "text-emerald-400",
-                    )}
-                  >
-                    {summary.spendChangePct > 0 ? "+" : ""}
-                    {summary.spendChangePct}%
-                  </span>
-                </span>
+        It was a card with two blurred violet orbs behind it and a "Money
+        Dashboard" pill at the top — decoration announcing the page you had just
+        clicked to reach. What is left is the one number people open this screen
+        for, the direction it moved this month, and the button that changes it.
+      */}
+      <div className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="eyebrow">Current balance</p>
+          <p className="tnum mt-2 text-4xl font-semibold tracking-tight lg:text-5xl">
+            {formatMoney(summary.balance)}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+            <span
+              className={cn(
+                "tnum inline-flex items-center gap-1.5 font-medium",
+                netPositive ? "text-emerald-400" : "text-rose-400",
               )}
-            </div>
+            >
+              {netPositive ? (
+                <TrendingUp className="size-4" />
+              ) : (
+                <TrendingDown className="size-4" />
+              )}
+              {netPositive ? "+" : ""}
+              {formatMoney(summary.netMonth)} this month
+            </span>
+            {summary.spendChangePct !== null && (
+              <span className="text-muted-foreground">
+                Spending{" "}
+                <span
+                  className={cn(
+                    "tnum font-medium",
+                    summary.spendChangePct > 0 ? "text-rose-400" : "text-emerald-400",
+                  )}
+                >
+                  {summary.spendChangePct > 0 ? "+" : ""}
+                  {summary.spendChangePct}%
+                </span>{" "}
+                vs last month
+              </span>
+            )}
           </div>
+        </div>
 
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/money/transactions">
+              <Receipt />
+              Ledger
+            </Link>
+          </Button>
           <AddTransactionDialog
             onCreated={reload}
             trigger={
-              <Button size="lg" className="glow shrink-0">
-                <Plus className="h-4 w-4" />
+              <Button>
+                <Plus />
                 Add transaction
               </Button>
             }
           />
         </div>
-      </Card>
-
-      {/* KPI grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3">
-        {kpis.map((k, i) => (
-          <Card
-            key={k.label}
-            className="glass p-4 animate-in-up"
-            style={{ animationDelay: `${i * 40}ms` }}
-          >
-            <div className={cn("inline-flex rounded-lg p-2", k.ring, k.accent)}>
-              <k.icon className="h-4 w-4" />
-            </div>
-            <p className="mt-3 text-lg font-bold tracking-tight tabular-nums">{k.value}</p>
-            <p className="text-xs font-medium text-muted-foreground">{k.label}</p>
-            {k.hint && <p className="mt-0.5 text-[10px] text-muted-foreground/70">{k.hint}</p>}
-          </Card>
-        ))}
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-        <Card className="glass p-5 xl:col-span-3 animate-in-up">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold">Cash flow</h3>
-              <p className="text-xs text-muted-foreground">Income vs expenses · last 6 months</p>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={monthlyTrend} barGap={4}>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-              <XAxis dataKey="label" stroke={AXIS} fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis
-                stroke={AXIS}
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={formatShort}
-                width={48}
-              />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: "oklch(0.28 0.02 275 / 0.2)" }} />
-              <Legend
-                wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-                formatter={(v) => <span className="text-muted-foreground">{v}</span>}
-              />
-              <Bar dataKey="income" name="Income" fill="#34d399" radius={[4, 4, 0, 0]} maxBarSize={28} />
-              <Bar dataKey="expense" name="Expense" fill="#fb7185" radius={[4, 4, 0, 0]} maxBarSize={28} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
+      {/* ---------- The month, in four numbers ---------- */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat
+          label="Income this month"
+          value={formatMoney(summary.monthIncome)}
+          icon={TrendingUp}
+          tone="positive"
+        />
+        <Stat
+          label="Spent this month"
+          value={formatMoney(summary.monthExpense)}
+          icon={TrendingDown}
+          sub={
+            budgets.totals.limit > 0
+              ? `${formatMoney(budgets.totals.spent)} of ${formatMoney(budgets.totals.limit)} budgeted`
+              : undefined
+          }
+        />
+        <Stat
+          label="Savings rate"
+          value={summary.monthIncome > 0 ? `${summary.savingsRate}%` : "—"}
+          icon={PiggyBank}
+          sub={summary.monthIncome > 0 ? "Of what came in this month" : "Log income to see this"}
+        >
+          {summary.monthIncome > 0 && (
+            <Meter
+              className="mt-3"
+              value={Math.max(0, summary.savingsRate) / 100}
+              tone={summary.savingsRate >= 20 ? "positive" : summary.savingsRate >= 0 ? "warning" : "danger"}
+            />
+          )}
+        </Stat>
+        <Stat
+          label="Committed each month"
+          value={formatMoney(recurring.monthlyExpense + loans.monthlyEmi)}
+          icon={Repeat}
+          to="/money/recurring"
+          sub={
+            loans.monthlyEmi > 0
+              ? `${formatMoney(recurring.monthlyExpense)} bills · ${formatMoney(loans.monthlyEmi)} EMI`
+              : "Bills and subscriptions"
+          }
+        />
+      </div>
 
-        <Card className="glass p-5 xl:col-span-2 animate-in-up">
-          <div className="mb-2">
-            <h3 className="font-semibold">Spending by category</h3>
-            <p className="text-xs text-muted-foreground">This month&apos;s expenses</p>
-          </div>
-          {categories.length === 0 ? (
-            <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">
-              No expenses this month yet
+      {/*
+        The three balances that are not cash: what is owed, what is set aside,
+        what is invested. They are a different question from "how did this month
+        go", so they are a separate row rather than three more tiles crammed
+        onto the end of a seven-across grid.
+      */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat
+          label="Loan outstanding"
+          value={loans.activeCount > 0 ? formatMoney(loans.outstanding) : "—"}
+          icon={Landmark}
+          to="/money/loans"
+          sub={
+            loans.activeCount > 0
+              ? `${loans.activeCount} active · ${formatMoney(loans.monthlyEmi)}/mo`
+              : "No active loans"
+          }
+        />
+        <Stat
+          label="Saved towards goals"
+          value={goals.totals.count > 0 ? formatMoney(goals.totals.saved) : "—"}
+          icon={Target}
+          to="/money/goals"
+          sub={
+            goals.totals.count > 0
+              ? `${goals.totals.completed} of ${goals.totals.count} complete`
+              : "No goals yet"
+          }
+        />
+        <Stat
+          label="Portfolio value"
+          value={investments.count > 0 ? formatMoney(investments.current) : "—"}
+          icon={LineChart}
+          to="/money/investments"
+          tone={investments.count === 0 ? "default" : investments.gain >= 0 ? "positive" : "negative"}
+          sub={
+            investments.count > 0 ? (
+              <span className="tnum">
+                {investments.gain >= 0 ? "+" : ""}
+                {formatMoney(investments.gain)} ({investments.gainPercent >= 0 ? "+" : ""}
+                {investments.gainPercent}%)
+              </span>
+            ) : (
+              "Nothing tracked yet"
+            )
+          }
+        />
+      </div>
+
+      {/* ---------- Charts ---------- */}
+      <div className="grid gap-4 xl:grid-cols-5">
+        <Section
+          className="xl:col-span-3"
+          title="Cash flow"
+          description="Income against spending, last six months"
+        >
+          <Card className="p-5">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={monthlyTrend} barGap={4} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke={theme.grid} vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke={theme.axis}
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  dy={6}
+                />
+                <YAxis
+                  stroke={theme.axis}
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={formatMoneyShort}
+                  width={52}
+                />
+                <Tooltip content={<ChartTooltip theme={theme} />} cursor={{ fill: theme.cursor }} />
+                <Bar dataKey="income" name="Income" fill={theme.income} radius={[3, 3, 0, 0]} maxBarSize={22} />
+                <Bar dataKey="expense" name="Expense" fill={theme.expense} radius={[3, 3, 0, 0]} maxBarSize={22} />
+              </BarChart>
+            </ResponsiveContainer>
+            {/* A hand-written legend, because Recharts' own one cannot be given
+                the app's type scale without fighting its inline styles. */}
+            <div className="mt-1 flex items-center justify-center gap-5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="size-2 rounded-sm" style={{ background: theme.income }} />
+                Income
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="size-2 rounded-sm" style={{ background: theme.expense }} />
+                Expense
+              </span>
             </div>
-          ) : (
-            <>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={categories}
-                    dataKey="amount"
-                    nameKey="category"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={52}
-                    outerRadius={78}
-                    paddingAngle={2}
-                  >
-                    {categories.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="transparent" />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<PieTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <ul className="mt-2 space-y-1.5 max-h-28 overflow-y-auto">
-                {categories.map((c, i) => (
-                  <li key={c.category} className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-2 truncate">
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
-                      />
-                      {c.category}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {formatMoney(c.amount)} · {c.percent}%
-                    </span>
+          </Card>
+        </Section>
+
+        <Section
+          className="xl:col-span-2"
+          title="Where it went"
+          description="This month's spending by category"
+        >
+          <Card className="p-5">
+            {categories.length === 0 ? (
+              <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+                No expenses this month yet
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <ResponsiveContainer width="100%" height={190}>
+                    <PieChart>
+                      <Pie
+                        data={categories}
+                        dataKey="amount"
+                        nameKey="category"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={62}
+                        outerRadius={86}
+                        paddingAngle={2}
+                        strokeWidth={0}
+                      >
+                        {categories.map((_, i) => (
+                          <Cell key={i} fill={theme.palette[i % theme.palette.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<PieTooltip theme={theme} />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* The total in the hole. A donut without one makes the reader
+                      add the slices up themselves. */}
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <p className="tnum text-lg font-semibold">
+                      {formatMoneyShort(categories.reduce((n, c) => n + c.amount, 0))}
+                    </p>
+                    <p className="text-[0.6875rem] text-muted-foreground">this month</p>
+                  </div>
+                </div>
+                <ul className="mt-3 max-h-32 space-y-1.5 overflow-y-auto pr-1">
+                  {categories.map((c, i) => (
+                    <li key={c.category} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ background: theme.palette[i % theme.palette.length] }}
+                        />
+                        <span className="truncate">{c.category}</span>
+                      </span>
+                      <span className="tnum shrink-0 text-muted-foreground">
+                        {formatMoney(c.amount)} · {c.percent}%
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Card>
+        </Section>
+      </div>
+
+      {/* ---------- Net trend + insights ---------- */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Section
+          className="lg:col-span-2"
+          title="Net savings"
+          description="What was left over, month by month"
+        >
+          <Card className="p-5">
+            <ResponsiveContainer width="100%" height={190}>
+              <AreaChart data={monthlyTrend} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="netGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={theme.net} stopOpacity={0.28} />
+                    <stop offset="100%" stopColor={theme.net} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke={theme.grid} vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke={theme.axis}
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  dy={6}
+                />
+                <YAxis
+                  stroke={theme.axis}
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={formatMoneyShort}
+                  width={52}
+                />
+                <Tooltip content={<ChartTooltip theme={theme} />} />
+                <Area
+                  type="monotone"
+                  dataKey="net"
+                  name="Net"
+                  stroke={theme.net}
+                  strokeWidth={2}
+                  fill="url(#netGrad)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </Card>
+        </Section>
+
+        <Section title="Insights" description="What the numbers are saying">
+          <Card className="h-full p-5">
+            {insights.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Add a few transactions and this fills in with what changed, what is drifting and
+                what is about to be due.
+              </p>
+            ) : (
+              <ul className="space-y-3.5">
+                {insights.map((ins, i) => (
+                  <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
+                    <InsightIcon tone={ins.tone} />
+                    <span className="text-muted-foreground">{ins.message}</span>
                   </li>
                 ))}
               </ul>
-            </>
-          )}
-        </Card>
+            )}
+          </Card>
+        </Section>
       </div>
 
-      {/* Net trend + insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="glass p-5 lg:col-span-2 animate-in-up">
-          <div className="mb-4">
-            <h3 className="font-semibold">Net savings trend</h3>
-            <p className="text-xs text-muted-foreground">Monthly surplus or deficit</p>
-          </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={monthlyTrend}>
-              <defs>
-                <linearGradient id="netGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-              <XAxis dataKey="label" stroke={AXIS} fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis
-                stroke={AXIS}
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={formatShort}
-                width={48}
-              />
-              <Tooltip content={<ChartTooltip />} />
-              <Area
-                type="monotone"
-                dataKey="net"
-                name="Net"
-                stroke="#a78bfa"
-                strokeWidth={2}
-                fill="url(#netGrad)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </Card>
-
-        <Card className="glass p-5 animate-in-up">
-          <h3 className="font-semibold">Insights</h3>
-          <p className="text-xs text-muted-foreground mb-4">Smart highlights from your data</p>
-          {insights.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Add transactions to unlock personalized insights.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {insights.map((ins, i) => (
-                <li key={i} className="flex gap-2.5 text-sm leading-snug">
-                  <InsightIcon tone={ins.tone} />
-                  <span className="text-muted-foreground">{ins.message}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-
-      {/* Budgets + Goals */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="glass p-5 animate-in-up">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold">Budget health</h3>
-              <p className="text-xs text-muted-foreground">
-                {budgets.totals.limit > 0
-                  ? `${formatMoney(budgets.totals.spent)} of ${formatMoney(budgets.totals.limit)} used`
-                  : "No budgets set"}
-              </p>
-            </div>
-            <Link
-              to="/money/budgets"
-              className="text-xs text-primary hover:underline underline-offset-4 flex items-center gap-1"
-            >
-              Manage <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
+      {/* ---------- Budgets + goals ---------- */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Section
+          title="Budget health"
+          description={
+            budgets.totals.limit > 0
+              ? `${formatMoney(budgets.totals.spent)} of ${formatMoney(budgets.totals.limit)} used`
+              : undefined
+          }
+          actions={<ViewAll to="/money/budgets" label="Manage" />}
+        >
           {budgets.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">
-              Set category budgets to track monthly limits.
-            </p>
+            <EmptyState
+              compact
+              icon={PiggyBank}
+              title="No budgets set"
+              description="Cap a category and this screen starts warning you before you go over, not after."
+              action={
+                <Button size="sm" asChild>
+                  <Link to="/money/budgets">Set a budget</Link>
+                </Button>
+              }
+            />
           ) : (
-            <ul className="space-y-3">
+            <Card className="divide-y divide-border">
               {budgets.items.map((b) => {
                 const Icon = getCategoryIcon(b.category);
                 return (
-                  <li key={b.id}>
-                    <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="flex items-center gap-2 truncate">
-                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                        {b.category}
+                  <div key={b.id} className="p-4">
+                    <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate font-medium">{b.category}</span>
+                        {b.over && <Badge variant="danger">over</Badge>}
                       </span>
                       <span
                         className={cn(
-                          "tabular-nums text-xs font-medium",
-                          b.over ? "text-rose-400" : "text-muted-foreground",
+                          "tnum shrink-0 text-xs",
+                          b.over ? "font-medium text-rose-400" : "text-muted-foreground",
                         )}
                       >
                         {formatMoney(b.spent)} / {formatMoney(b.limit)}
                       </span>
                     </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-background/60">
-                      <div
-                        className={cn(
-                          "h-full rounded-full transition-all",
-                          b.over
-                            ? "bg-gradient-to-r from-rose-500 to-rose-400"
-                            : b.percent >= 80
-                              ? "bg-gradient-to-r from-amber-500 to-amber-400"
-                              : "bg-gradient-to-r from-emerald-500 to-emerald-400",
-                        )}
-                        style={{ width: `${Math.min(b.percent, 100)}%` }}
-                      />
-                    </div>
-                  </li>
+                    <Meter
+                      value={b.percent / 100}
+                      tone={b.over ? "danger" : b.percent >= 80 ? "warning" : "positive"}
+                    />
+                  </div>
                 );
               })}
-            </ul>
+            </Card>
           )}
-        </Card>
+        </Section>
 
-        <Card className="glass p-5 animate-in-up">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold">Savings goals</h3>
-              <p className="text-xs text-muted-foreground">
-                {goals.totals.count > 0
-                  ? `${formatMoney(goals.totals.saved)} of ${formatMoney(goals.totals.target)} saved`
-                  : "No goals yet"}
-              </p>
-            </div>
-            <Link
-              to="/money/goals"
-              className="text-xs text-primary hover:underline underline-offset-4 flex items-center gap-1"
-            >
-              View all <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
+        <Section
+          title="Savings goals"
+          description={
+            goals.totals.count > 0
+              ? `${formatMoney(goals.totals.saved)} of ${formatMoney(goals.totals.target)} saved`
+              : undefined
+          }
+          actions={<ViewAll to="/money/goals" />}
+        >
           {goals.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">
-              Create a goal to track what you&apos;re saving for.
-            </p>
+            <EmptyState
+              compact
+              icon={Target}
+              title="No goals yet"
+              description="Name what you are saving for and watch the bar fill. It works better than willpower."
+              action={
+                <Button size="sm" asChild>
+                  <Link to="/money/goals">Create a goal</Link>
+                </Button>
+              }
+            />
           ) : (
-            <ul className="space-y-3">
+            <Card className="divide-y divide-border">
               {goals.items.map((g) => (
-                <li key={g.id} className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background/50 text-lg">
+                <div key={g.id} className="flex items-center gap-3 p-4">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-base">
                     {g.emoji || "🎯"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between gap-3 text-sm">
                       <span className="truncate font-medium">{g.name}</span>
-                      <span className="tabular-nums text-muted-foreground">{g.percent}%</span>
+                      <span className="tnum shrink-0 text-muted-foreground">{g.percent}%</span>
                     </div>
-                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-background/60">
-                      <div
-                        className={cn(
-                          "h-full rounded-full",
-                          g.completed
-                            ? "bg-gradient-to-r from-emerald-500 to-emerald-400"
-                            : "bg-gradient-to-r from-primary to-violet-400",
-                        )}
-                        style={{ width: `${g.percent}%` }}
-                      />
-                    </div>
+                    <Meter
+                      className="mt-2"
+                      value={g.percent / 100}
+                      tone={g.completed ? "positive" : "default"}
+                    />
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </Card>
           )}
-        </Card>
+        </Section>
       </div>
 
-      {/* Upcoming + Recent */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="glass p-5 animate-in-up">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold">Upcoming payments</h3>
-              <p className="text-xs text-muted-foreground">Recurring bills &amp; subscriptions</p>
-            </div>
-            <Link
-              to="/money/recurring"
-              className="text-xs text-primary hover:underline underline-offset-4 flex items-center gap-1"
-            >
-              Recurring <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
+      {/* ---------- Upcoming + recent ---------- */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Section
+          title="Upcoming payments"
+          description="Bills and subscriptions, soonest first"
+          actions={<ViewAll to="/money/recurring" label="All bills" />}
+        >
           {recurring.upcoming.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">No active recurring items.</p>
+            <EmptyState
+              compact
+              icon={Repeat}
+              title="No recurring items"
+              description="Add the bills you pay every month and MyX rolls their due dates forward for you."
+              action={
+                <Button size="sm" asChild>
+                  <Link to="/money/recurring">Add a bill</Link>
+                </Button>
+              }
+            />
           ) : (
-            <ul className="divide-y divide-border/40">
+            <Card className="divide-y divide-border overflow-hidden">
               {recurring.upcoming.slice(0, 5).map((r) => (
-                <li key={r.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                  <div
+                <Link
+                  key={r.id}
+                  to="/money/recurring"
+                  className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
+                >
+                  <span
                     className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-                      r.type === "income"
-                        ? "bg-emerald-500/15 text-emerald-400"
-                        : "bg-rose-500/15 text-rose-400",
+                      "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                      r.overdue
+                        ? "bg-rose-400/10 text-rose-400"
+                        : r.type === "income"
+                          ? "bg-emerald-400/10 text-emerald-400"
+                          : "bg-secondary text-muted-foreground",
                     )}
                   >
-                    <Repeat className="h-4 w-4" />
-                  </div>
+                    <Repeat className="size-4" />
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{r.name}</p>
                     <p
                       className={cn(
                         "text-xs",
                         r.overdue
-                          ? "text-rose-400 font-medium"
+                          ? "font-medium text-rose-400"
                           : r.days_until <= 3
                             ? "text-amber-400"
                             : "text-muted-foreground",
@@ -614,69 +671,82 @@ export default function MoneyOverview() {
                             : `Due ${formatDate(r.next_due)}`}
                     </p>
                   </div>
-                  <span className="text-sm font-semibold tabular-nums">{formatMoney(r.amount)}</span>
-                </li>
+                  <span className="tnum shrink-0 text-sm font-medium">{formatMoney(r.amount)}</span>
+                </Link>
               ))}
-            </ul>
+            </Card>
           )}
-        </Card>
+        </Section>
 
-        <Card className="glass overflow-hidden animate-in-up">
-          <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <div>
-              <h3 className="font-semibold">Recent transactions</h3>
-              <p className="text-xs text-muted-foreground">{summary.transactionCount} total</p>
-            </div>
-            <Link
-              to="/money/transactions"
-              className="text-xs text-primary hover:underline underline-offset-4 flex items-center gap-1"
-            >
-              View all <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
+        <Section
+          title="Recent transactions"
+          description={`${summary.transactionCount.toLocaleString("en-IN")} in total`}
+          actions={<ViewAll to="/money/transactions" />}
+        >
           {recentTransactions.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 px-5 pb-8 pt-2 text-center">
-              <Wallet className="h-8 w-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">No transactions yet.</p>
-            </div>
+            <EmptyState
+              compact
+              icon={Wallet}
+              title="No transactions yet"
+              description="Everything on this page fills in from the ledger. Start with one entry."
+              action={
+                <AddTransactionDialog
+                  onCreated={reload}
+                  trigger={
+                    <Button size="sm">
+                      <Plus />
+                      Add transaction
+                    </Button>
+                  }
+                />
+              }
+            />
           ) : (
-            <ul className="divide-y divide-border/40">
+            <Card className="divide-y divide-border overflow-hidden">
               {recentTransactions.map((t) => {
                 const income = t.type === "income";
+                const Icon = getCategoryIcon(t.category);
                 return (
-                  <li key={t.id} className="flex items-center gap-3 px-5 py-3">
-                    <div
+                  <Link
+                    key={t.id}
+                    to={`/money/transactions/${t.id}`}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
+                  >
+                    <span
                       className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                        income ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400",
+                        "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                        income
+                          ? "bg-emerald-400/10 text-emerald-400"
+                          : "bg-secondary text-muted-foreground",
                       )}
                     >
-                      {income ? (
-                        <ArrowUpRight className="h-4 w-4" />
-                      ) : (
-                        <ArrowDownLeft className="h-4 w-4" />
-                      )}
-                    </div>
+                      <Icon className="size-4" />
+                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{t.category}</p>
                       <p className="text-xs text-muted-foreground">{formatDate(t.occurred_on)}</p>
                     </div>
                     <span
                       className={cn(
-                        "text-sm font-semibold tabular-nums",
+                        "tnum shrink-0 text-sm font-medium",
                         income ? "text-emerald-400" : "text-foreground",
                       )}
                     >
                       {income ? "+" : "−"}
                       {formatMoney(t.amount)}
                     </span>
-                  </li>
+                    {income ? (
+                      <ArrowUpRight className="size-3.5 shrink-0 text-emerald-400/50" />
+                    ) : (
+                      <ArrowDownLeft className="size-3.5 shrink-0 text-muted-foreground/30" />
+                    )}
+                  </Link>
                 );
               })}
-            </ul>
+            </Card>
           )}
-        </Card>
+        </Section>
       </div>
-    </div>
+    </PageShell>
   );
 }

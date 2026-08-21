@@ -15,39 +15,59 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ============================================================
-   MyX — Premium design tokens
-   Dark, refined, violet-accented. Built on OKLCH for depth.
+   MyX — design tokens
+
+   The palette is deliberately achromatic. Colour in this app means
+   something — green is money in, red is money out, amber is a warning —
+   and a violet chrome competed with all three: every card glowed, so
+   nothing stood out. The surfaces are now greys and the only saturated
+   pixels on screen are data.
+
+   Greys carry a trace of chroma (0.003–0.006) rather than being pure
+   neutral. At that level nobody can name the hue, but the flat, slightly
+   dead look of #171717 goes away.
    ============================================================ */
 :root {
-  --radius: 0.85rem;
+  --radius: 0.625rem;
 
-  --background: oklch(0.145 0.01 275);
-  --foreground: oklch(0.97 0.005 275);
+  --background: oklch(0.145 0.003 285);
+  --foreground: oklch(0.985 0 0);
 
-  --card: oklch(0.185 0.012 275);
-  --card-foreground: oklch(0.97 0.005 275);
+  --card: oklch(0.178 0.004 285);
+  --card-foreground: oklch(0.985 0 0);
 
-  --popover: oklch(0.185 0.012 275);
-  --popover-foreground: oklch(0.97 0.005 275);
+  --popover: oklch(0.196 0.004 285);
+  --popover-foreground: oklch(0.985 0 0);
 
-  --primary: oklch(0.62 0.19 285);
-  --primary-foreground: oklch(0.99 0 0);
+  /* Monochrome primary: a white button on near-black. It is the loudest
+     thing the interface can say without spending a colour to say it. */
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.17 0.004 285);
 
-  --secondary: oklch(0.24 0.015 275);
-  --secondary-foreground: oklch(0.97 0.005 275);
+  --secondary: oklch(0.24 0.004 285);
+  --secondary-foreground: oklch(0.985 0 0);
 
-  --muted: oklch(0.24 0.015 275);
-  --muted-foreground: oklch(0.68 0.02 275);
+  --muted: oklch(0.24 0.004 285);
+  --muted-foreground: oklch(0.706 0.008 285);
 
-  --accent: oklch(0.28 0.03 285);
-  --accent-foreground: oklch(0.97 0.005 275);
+  --accent: oklch(0.26 0.005 285);
+  --accent-foreground: oklch(0.985 0 0);
 
   --destructive: oklch(0.62 0.21 22);
-  --destructive-foreground: oklch(0.99 0 0);
+  --destructive-foreground: oklch(0.985 0 0);
 
-  --border: oklch(0.28 0.02 275 / 0.6);
-  --input: oklch(0.3 0.02 275 / 0.5);
-  --ring: oklch(0.62 0.19 285);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.14);
+  --ring: oklch(0.72 0.01 285);
+
+  /* One accent, used sparingly: focus, links, the brand mark. */
+  --brand: oklch(0.62 0.19 285);
+
+  /* Elevation. Two steps, both quiet — a premium surface reads as a
+     hairline and a whisper of shadow, not as a drop shadow. */
+  --shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
+  --shadow-md: 0 4px 16px -4px oklch(0 0 0 / 0.4), 0 1px 2px 0 oklch(0 0 0 / 0.3);
+  --shadow-lg: 0 16px 48px -12px oklch(0 0 0 / 0.55), 0 2px 6px -1px oklch(0 0 0 / 0.35);
 }
 
 /* ============================================================
@@ -57,41 +77,41 @@
    with, and what every screen was designed against. This block only says what
    changes, and it hangs off a class that /theme-init.js puts on <html> before
    the first paint (see src/lib/theme.tsx).
-
-   Same violet, same structure, inverted ground. Chroma comes down as lightness
-   goes up: a colour that reads as "rich" on near-black reads as "loud" on
-   near-white at the same saturation.
    ============================================================ */
 .light {
-  --background: oklch(0.985 0.004 285);
-  --foreground: oklch(0.22 0.02 275);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.16 0.004 285);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.02 275);
+  --card-foreground: oklch(0.16 0.004 285);
 
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.02 275);
+  --popover-foreground: oklch(0.16 0.004 285);
 
-  /* Darker than the dark-mode violet: the same hue has to carry contrast
-     against white now, not against near-black. */
-  --primary: oklch(0.54 0.2 285);
+  --primary: oklch(0.21 0.004 285);
   --primary-foreground: oklch(0.99 0 0);
 
-  --secondary: oklch(0.955 0.008 275);
-  --secondary-foreground: oklch(0.28 0.02 275);
+  --secondary: oklch(0.97 0.002 285);
+  --secondary-foreground: oklch(0.21 0.004 285);
 
-  --muted: oklch(0.955 0.008 275);
-  --muted-foreground: oklch(0.47 0.02 275);
+  --muted: oklch(0.97 0.002 285);
+  --muted-foreground: oklch(0.53 0.008 285);
 
-  --accent: oklch(0.945 0.018 285);
-  --accent-foreground: oklch(0.25 0.02 275);
+  --accent: oklch(0.965 0.003 285);
+  --accent-foreground: oklch(0.21 0.004 285);
 
   --destructive: oklch(0.55 0.22 22);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.45 0.02 275 / 0.18);
-  --input: oklch(0.45 0.02 275 / 0.26);
-  --ring: oklch(0.54 0.2 285);
+  --border: oklch(0.2 0.01 285 / 0.11);
+  --input: oklch(0.2 0.01 285 / 0.16);
+  --ring: oklch(0.55 0.01 285);
+
+  --brand: oklch(0.54 0.2 285);
+
+  --shadow-sm: 0 1px 2px 0 oklch(0.2 0.02 285 / 0.06);
+  --shadow-md: 0 4px 16px -4px oklch(0.2 0.02 285 / 0.1), 0 1px 2px 0 oklch(0.2 0.02 285 / 0.05);
+  --shadow-lg: 0 16px 48px -12px oklch(0.2 0.02 285 / 0.16), 0 2px 6px -1px oklch(0.2 0.02 285 / 0.06);
 
   /*
     Status colours are spelled out as Tailwind utilities across ~190 places —
@@ -102,18 +122,21 @@
     Rather than touch all 190, the palette variables those utilities compile to
     are redefined here. One block, and income stays green while becoming legible.
   */
-  --color-emerald-200: oklch(0.508 0.118 165.6);
-  --color-emerald-300: oklch(0.508 0.118 165.6);
-  --color-emerald-400: oklch(0.55 0.13 164);
-  --color-rose-200: oklch(0.51 0.22 18);
-  --color-rose-300: oklch(0.51 0.22 18);
-  --color-rose-400: oklch(0.55 0.24 18);
-  --color-amber-200: oklch(0.51 0.13 60);
-  --color-amber-300: oklch(0.51 0.13 60);
-  --color-amber-400: oklch(0.58 0.15 59);
+  --color-emerald-200: oklch(0.5 0.12 165.6);
+  --color-emerald-300: oklch(0.5 0.12 165.6);
+  --color-emerald-400: oklch(0.53 0.13 164);
+  --color-emerald-500: oklch(0.53 0.13 164);
+  --color-rose-200: oklch(0.5 0.21 18);
+  --color-rose-300: oklch(0.5 0.21 18);
+  --color-rose-400: oklch(0.53 0.23 18);
+  --color-rose-500: oklch(0.53 0.23 18);
+  --color-amber-200: oklch(0.5 0.13 60);
+  --color-amber-300: oklch(0.5 0.13 60);
+  --color-amber-400: oklch(0.56 0.14 59);
+  --color-amber-500: oklch(0.56 0.14 59);
   --color-sky-300: oklch(0.5 0.13 242);
-  --color-sky-400: oklch(0.55 0.15 242);
-  --color-violet-400: oklch(0.54 0.25 293);
+  --color-sky-400: oklch(0.53 0.15 242);
+  --color-violet-400: oklch(0.52 0.24 293);
 }
 
 @theme inline {
@@ -136,13 +159,16 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand: var(--brand);
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 10px);
 }
 
 @layer base {
@@ -152,6 +178,7 @@
 
   html {
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
@@ -160,66 +187,203 @@
     color: var(--foreground);
     font-family: var(--font-sans);
     min-height: 100dvh;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    /* cv11 is the single-storey "a"/"g"; ss03 the tighter punctuation. Together
+       they are most of what makes Inter look like Geist rather than like the
+       default Inter every bootstrapped site ships. */
+    font-feature-settings: "cv11", "ss03", "calt";
   }
 
-  /* Ambient premium background: layered radial glows on the near-black base. */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    background:
-      radial-gradient(60rem 60rem at 15% -10%, oklch(0.62 0.19 285 / 0.16), transparent 60%),
-      radial-gradient(50rem 50rem at 100% 0%, oklch(0.6 0.15 220 / 0.12), transparent 55%),
-      radial-gradient(40rem 40rem at 80% 110%, oklch(0.62 0.19 330 / 0.1), transparent 55%);
-  }
-
-  /* The same three glows, dialled right down — on a near-white ground the
-     dark-mode opacities read as stains rather than as light. */
-  .light body::before {
-    background:
-      radial-gradient(60rem 60rem at 15% -10%, oklch(0.62 0.19 285 / 0.09), transparent 60%),
-      radial-gradient(50rem 50rem at 100% 0%, oklch(0.6 0.15 220 / 0.07), transparent 55%),
-      radial-gradient(40rem 40rem at 80% 110%, oklch(0.62 0.19 330 / 0.06), transparent 55%);
+  /* Headings are set tight. At display sizes the default tracking opens up
+     enough to look accidental. */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.021em;
   }
 
   ::selection {
-    background: oklch(0.62 0.19 285 / 0.35);
+    background: color-mix(in oklab, var(--foreground) 18%, transparent);
   }
 
-  .light ::selection {
-    background: oklch(0.62 0.19 285 / 0.22);
-  }
-
-  /* Refined scrollbar */
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  /* Hairline scrollbars. The 10px chunky default is the loudest thing on an
+     otherwise quiet page. */
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: var(--border);
+    background: color-mix(in oklab, var(--foreground) 16%, transparent);
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
-  ::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--foreground) 28%, transparent);
+    background-clip: content-box;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent) transparent;
+  }
+
+  /* Keyboard focus, once, everywhere. Mouse clicks never trigger it. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }
 
 @layer utilities {
-  /* Glassmorphism surface used for cards and panels. */
+  /*
+    `glass` is a historical name — it used to be a 20px backdrop blur, which
+    cost a composite layer on every card and turned text soft on a phone. It is
+    now the app's plain surface: card colour, hairline, nothing else. The name
+    stays because 50 call sites use it and they all want the same thing.
+  */
   .glass {
-    background: oklch(0.2 0.014 275 / 0.55);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid oklch(0.4 0.02 275 / 0.25);
+    background: var(--card);
+    border: 1px solid var(--border);
   }
 
-  /* Frosted white rather than frosted black. The border has to be darker than
-     the surface here, where in dark mode it is lighter. */
-  .light .glass {
-    background: oklch(1 0 0 / 0.72);
-    border-color: oklch(0.45 0.02 275 / 0.14);
+  /* Bars that sit over scrolling content — the header, the mobile tab bar —
+     do still blur, because content passing under an opaque bar looks broken. */
+  .glass-bar {
+    background: color-mix(in oklab, var(--background) 78%, transparent);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
   }
 
+  /* Was a violet halo on every primary button. Now it is the shadow a raised
+     surface actually casts. */
+  .glow {
+    box-shadow: var(--shadow-sm);
+  }
+
+  .shadow-elev {
+    box-shadow: var(--shadow-md);
+  }
+
+  .shadow-pop {
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* A card that is also a link. The lift is 1px and the border gains ~8%
+     opacity — enough to feel alive, not enough to jump. */
+  .card-interactive {
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      transform 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .card-interactive:hover {
+    border-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+    background-color: color-mix(in oklab, var(--foreground) 2.5%, var(--card));
+  }
+
+  /*
+    Grows a control's touch target without changing what it looks like or where
+    anything sits.
+
+    A 32px icon button and a 17px text link are both fine with a mouse and both
+    miss with a thumb — Apple and Google both put the floor around 44px. Padding
+    the elements up to that would relayout the header and double the height of
+    the footer, so the extra area is an invisible pseudo-element instead. Only
+    for controls that sit alone; two of these side by side would overlap.
+  */
+  /*
+    `:where()` so this carries zero specificity. Written as a plain `.tap`
+    rule it beat Tailwind's own `absolute`, which snapped the show-password
+    button out of its field and parked it under the input. Anything already
+    positioned keeps its own value; only static elements get a context.
+  */
+  :where(.tap) {
+    position: relative;
+  }
+  .tap::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+
+  /*
+    Range sliders.
+
+    The native control is a 16px-tall element whose thumb is smaller still, and
+    on the calculators it is the primary way anyone changes a figure — on a
+    phone that is a target you miss more often than you hit. Styling a range
+    input means taking over the whole thing: `appearance: none` drops the track
+    as well as the thumb, so both are rebuilt here, per engine, because WebKit
+    and Gecko expose them under different pseudo-elements and neither accepts
+    the other's.
+
+    The element is 44px tall with a 6px visible track. The extra height is
+    transparent and does the catching.
+  */
+  .range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 2.75rem;
+    background: transparent;
+    cursor: pointer;
+  }
+  .range:focus-visible {
+    outline: none;
+  }
+
+  .range::-webkit-slider-runnable-track {
+    height: 0.375rem;
+    border-radius: 999px;
+    background: var(--input);
+  }
+  .range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 1.25rem;
+    width: 1.25rem;
+    border-radius: 999px;
+    background: var(--foreground);
+    border: 2px solid var(--background);
+    box-shadow: var(--shadow-sm);
+    /* Centres the thumb on the track: (track - thumb) / 2. */
+    margin-top: -0.4375rem;
+    transition: transform 120ms ease;
+  }
+  .range:active::-webkit-slider-thumb {
+    transform: scale(1.1);
+  }
+  .range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 40%, transparent);
+  }
+
+  .range::-moz-range-track {
+    height: 0.375rem;
+    border-radius: 999px;
+    background: var(--input);
+  }
+  .range::-moz-range-thumb {
+    height: 1.25rem;
+    width: 1.25rem;
+    border: 2px solid var(--background);
+    border-radius: 999px;
+    background: var(--foreground);
+    box-shadow: var(--shadow-sm);
+  }
+  .range:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 40%, transparent);
+  }
+
+  /* Numerals in a ledger have to line up in columns. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum", "cv11";
+  }
+
+  /* Small caps-ish section labels: the shadcn/Vercel section eyebrow. */
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
 
   /* ---------- Landing page primitives ---------- */
 
@@ -229,17 +393,22 @@
   */
   .grid-bg {
     background-image:
-      linear-gradient(oklch(0.6 0.02 275 / 0.07) 1px, transparent 1px),
-      linear-gradient(90deg, oklch(0.6 0.02 275 / 0.07) 1px, transparent 1px);
-    background-size: 56px 56px;
-    -webkit-mask-image: radial-gradient(60% 50% at 50% 0%, #000 20%, transparent 75%);
-    mask-image: radial-gradient(60% 50% at 50% 0%, #000 20%, transparent 75%);
+      linear-gradient(color-mix(in oklab, var(--foreground) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklab, var(--foreground) 6%, transparent) 1px, transparent 1px);
+    background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(70% 55% at 50% 0%, #000 10%, transparent 80%);
+    mask-image: radial-gradient(70% 55% at 50% 0%, #000 10%, transparent 80%);
   }
 
   /* Hairline that fades at both ends — used to separate bands without a hard rule. */
   .rule-fade {
     height: 1px;
-    background: linear-gradient(90deg, transparent, oklch(0.5 0.02 275 / 0.35), transparent);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--foreground) 14%, transparent),
+      transparent
+    );
   }
 
   /*
@@ -247,118 +416,243 @@
     physical panel; without the inset line it looks like a flat rectangle.
   */
   .app-frame {
-    background: oklch(0.17 0.012 275 / 0.92);
-    border: 1px solid oklch(0.42 0.02 275 / 0.3);
+    background: var(--card);
+    border: 1px solid var(--border);
     box-shadow:
-      inset 0 1px 0 oklch(0.85 0.02 275 / 0.07),
-      0 40px 80px -24px oklch(0.05 0.01 275 / 0.9),
-      0 0 120px -40px oklch(0.62 0.19 285 / 0.5);
+      inset 0 1px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
+      var(--shadow-lg);
   }
 
-  /* Numerals in the mock must line up in columns like a real ledger. */
-  .tnum {
-    font-variant-numeric: tabular-nums;
-  }
-
-  .light .grid-bg {
-    background-image:
-      linear-gradient(oklch(0.4 0.02 275 / 0.07) 1px, transparent 1px),
-      linear-gradient(90deg, oklch(0.4 0.02 275 / 0.07) 1px, transparent 1px);
-  }
-
-  .light .rule-fade {
-    background: linear-gradient(90deg, transparent, oklch(0.5 0.02 275 / 0.25), transparent);
-  }
-
-  /* The hero panel keeps its depth by inverting which edge catches the light:
-     a highlight along the top in dark mode, a shadow underneath in light. */
   .light .app-frame {
-    background: oklch(1 0 0 / 0.95);
-    border-color: oklch(0.45 0.02 275 / 0.16);
     box-shadow:
       inset 0 1px 0 oklch(1 0 0 / 0.9),
-      0 40px 80px -24px oklch(0.4 0.03 275 / 0.22),
-      0 0 120px -40px oklch(0.62 0.19 285 / 0.25);
+      var(--shadow-lg);
   }
 
+  /* The headline fades from full-strength text to ~55%, which reads as depth
+     without introducing a second colour. */
   .text-gradient {
-    background: linear-gradient(120deg, oklch(0.97 0.005 275), oklch(0.72 0.16 285));
+    background: linear-gradient(
+      170deg,
+      var(--foreground) 20%,
+      color-mix(in oklab, var(--foreground) 52%, var(--background)) 100%
+    );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
 
-  /* Runs dark-to-violet instead of white-to-violet, or the headline fades out
-     into the page. */
-  .light .text-gradient {
-    background: linear-gradient(120deg, oklch(0.24 0.02 275), oklch(0.52 0.22 285));
-    -webkit-background-clip: text;
-    background-clip: text;
-  }
-
-  .light .glow {
-    box-shadow: 0 10px 40px -12px oklch(0.54 0.2 285 / 0.4);
-  }
-
-  /* Soft glow ring for primary CTAs. */
-  .glow {
-    box-shadow: 0 10px 40px -12px oklch(0.62 0.19 285 / 0.55);
-  }
-
   @keyframes float-in {
-    from { opacity: 0; transform: translateY(12px); }
+    from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
   .animate-in-up {
-    animation: float-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: float-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* ============================================================
+     Landing page atmosphere
+
+     The app itself is deliberately flat — greys, hairlines, no glow. The
+     marketing page is the one place that gets to have weather, because it has
+     to do in three seconds what the product does in three minutes: look like
+     something you would want to keep on your phone.
+
+     All of it is masked, blurred and low-opacity so it reads as light in a
+     room rather than as decoration stuck on top.
+     ============================================================ */
+
+  /* Slow-drifting colour fields behind the hero. Three blobs, different
+     periods, so the loop never visibly repeats. */
+  .aurora {
+    position: absolute;
+    border-radius: 9999px;
+    /* Heavy blur is what separates "atmosphere" from "a coloured circle". At
+       90px the blobs still had a readable edge where the section clipped them,
+       which made the hero look like it had corner banners stuck on it. */
+    filter: blur(130px);
+    opacity: 0.42;
+    will-change: transform;
+  }
+  .light .aurora {
+    opacity: 0.26;
+    filter: blur(110px);
+  }
+
+  @keyframes drift-a {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    33% { transform: translate3d(6%, -8%, 0) scale(1.12); }
+    66% { transform: translate3d(-5%, 6%, 0) scale(0.94); }
+  }
+  @keyframes drift-b {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(-8%, 7%, 0) scale(1.15); }
+  }
+  @keyframes drift-c {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+    40% { transform: translate3d(7%, 9%, 0) scale(0.9); }
+    75% { transform: translate3d(-6%, -4%, 0) scale(1.1); }
+  }
+  .drift-a { animation: drift-a 26s ease-in-out infinite; }
+  .drift-b { animation: drift-b 32s ease-in-out infinite; }
+  .drift-c { animation: drift-c 38s ease-in-out infinite; }
+
+  /*
+    A hairline that is brighter at the top than the bottom, which is what makes
+    a dark panel read as lit from above rather than as a flat rectangle.
+  */
+  .edge-lit {
+    position: relative;
+  }
+  .edge-lit::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--foreground) 22%, transparent),
+      color-mix(in oklab, var(--foreground) 4%, transparent) 40%,
+      transparent
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /*
+    Cursor spotlight on a card. --mx/--my are written by the pointer handler in
+    JS; with no pointer (touch, or before first move) they sit at 50% 0% and the
+    layer stays invisible at opacity 0.
+  */
+  .spotlight {
+    position: relative;
+    isolation: isolate;
+  }
+  .spotlight::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    background: radial-gradient(
+      22rem 22rem at var(--mx, 50%) var(--my, 0%),
+      color-mix(in oklab, var(--brand) 22%, transparent),
+      transparent 70%
+    );
+    pointer-events: none;
+    z-index: -1;
+  }
+  .spotlight:hover::after {
+    opacity: 1;
+  }
+
+  /* Very fine film grain. Without it, big blurred gradients band on 8-bit
+     displays — visible as concentric rings across the hero. */
+  .grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* The section eyebrow on the marketing page: a rule, then small caps. */
+  .marquee-track {
+    display: flex;
+    width: max-content;
+    animation: marquee 38s linear infinite;
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .marquee-mask {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  }
+
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+  /* Skeletons: a moving highlight rather than a pulsing block, which reads as
+     "loading" instead of "broken". */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--foreground) 6%, transparent),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-in-up { animation: none; }
+    .skeleton::after { animation: none; }
+    .drift-a, .drift-b, .drift-c, .marquee-track { animation: none; }
   }
 }
 
 /* Rendered-markdown styling for the Notes preview. */
 .md {
-  font-size: 0.95rem;
+  font-size: 0.9375rem;
   line-height: 1.7;
   color: var(--foreground);
 }
 .md > :first-child { margin-top: 0; }
-.md h1, .md h2, .md h3, .md h4 { font-weight: 700; line-height: 1.3; margin: 1.4em 0 0.5em; }
-.md h1 { font-size: 1.6rem; }
-.md h2 { font-size: 1.3rem; }
-.md h3 { font-size: 1.1rem; }
+.md h1, .md h2, .md h3, .md h4 { font-weight: 650; line-height: 1.3; margin: 1.5em 0 0.5em; letter-spacing: -0.02em; }
+.md h1 { font-size: 1.5rem; }
+.md h2 { font-size: 1.25rem; }
+.md h3 { font-size: 1.05rem; }
 .md p { margin: 0.7em 0; }
 .md ul, .md ol { margin: 0.7em 0; padding-left: 1.4em; }
 .md ul { list-style: disc; }
 .md ol { list-style: decimal; }
 .md li { margin: 0.25em 0; }
-.md a { color: oklch(0.72 0.16 285); text-decoration: underline; text-underline-offset: 2px; }
-.md strong { font-weight: 700; }
+.md a { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklab, var(--foreground) 35%, transparent); }
+.md a:hover { text-decoration-color: var(--foreground); }
+.md strong { font-weight: 650; }
 .md em { font-style: italic; }
 .md blockquote {
-  border-left: 3px solid var(--primary);
+  border-left: 2px solid var(--border);
   padding-left: 1em;
-  margin: 0.8em 0;
+  margin: 0.9em 0;
   color: var(--muted-foreground);
 }
 .md code {
-  background: oklch(0.28 0.02 275 / 0.6);
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
   padding: 0.15em 0.4em;
-  border-radius: 6px;
+  border-radius: 5px;
   font-size: 0.85em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .md pre {
-  background: oklch(0.16 0.012 275);
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 1em;
   overflow-x: auto;
   margin: 0.9em 0;
 }
-.md pre code { background: transparent; padding: 0; font-size: 0.85rem; }
-.light .md a { color: oklch(0.5 0.22 285); }
-.light .md code { background: oklch(0.5 0.02 275 / 0.1); }
-.light .md pre { background: oklch(0.97 0.005 275); }
-.md hr { border: none; border-top: 1px solid var(--border); margin: 1.4em 0; }
-.md input[type="checkbox"] { margin-right: 0.5em; accent-color: var(--primary); }
-.md table { border-collapse: collapse; margin: 0.8em 0; width: 100%; }
-.md th, .md td { border: 1px solid var(--border); padding: 0.4em 0.7em; text-align: left; }
+.md pre code { background: transparent; padding: 0; font-size: 0.8125rem; }
+.md hr { border: none; border-top: 1px solid var(--border); margin: 1.6em 0; }
+.md input[type="checkbox"] { margin-right: 0.5em; accent-color: var(--foreground); }
+.md table { border-collapse: collapse; margin: 0.9em 0; width: 100%; font-size: 0.875rem; }
+.md th, .md td { border: 1px solid var(--border); padding: 0.5em 0.75em; text-align: left; }
+.md th { background: color-mix(in oklab, var(--foreground) 4%, transparent); font-weight: 600; }

@@ -1,9 +1,8 @@
 import { useCallback, useState } from "react";
 import {
   Plus,
-  Target,
+  PiggyBank,
   Trash2,
-  Loader2,
   Pencil,
   AlertTriangle,
   ChevronLeft,
@@ -11,6 +10,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Meter } from "@/components/ui/stat";
+import { PageShell, PageHeader, EmptyState } from "@/components/ui/page";
+import { SkeletonCards } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import BudgetDialog from "@/components/BudgetDialog";
 import LoadError from "@/components/LoadError";
 import { getCategoryIcon } from "@/components/CategoryPicker";
@@ -20,13 +25,18 @@ import { cn } from "@/lib/utils";
 
 type Totals = { limit: number; spent: number; remaining: number };
 
-// Colour by how close spend is to the limit.
-function tone(percent: number, over: boolean) {
-  if (over) return { bar: "bg-gradient-to-r from-rose-500 to-rose-400", text: "text-rose-400" };
-  if (percent >= 80)
-    return { bar: "bg-gradient-to-r from-amber-500 to-amber-400", text: "text-amber-400" };
-  return { bar: "bg-gradient-to-r from-emerald-500 to-emerald-400", text: "text-emerald-400" };
+/** Green under 80%, amber approaching, red past the line. */
+function tone(percent: number, over: boolean): "positive" | "warning" | "danger" {
+  if (over) return "danger";
+  if (percent >= 80) return "warning";
+  return "positive";
 }
+
+const TONE_TEXT = {
+  positive: "text-emerald-400",
+  warning: "text-amber-400",
+  danger: "text-rose-400",
+} as const;
 
 /** YYYY-MM for the user's local month, and the label people read. */
 function monthKey(offset = 0): string {
@@ -41,6 +51,20 @@ function monthLabel(key: string): string {
   return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 }
 
+/**
+ * How far through the month we are, as a fraction.
+ *
+ * The single most useful thing a budget screen can tell you is not "you have
+ * spent 70%" but "you have spent 70% on day 12" — the same number is fine in
+ * one case and a problem in the other. Past months are complete by definition.
+ */
+function monthProgress(key: string): number {
+  if (key !== monthKey()) return 1;
+  const now = new Date();
+  const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return now.getDate() / days;
+}
+
 export default function Budgets() {
   /*
     Budgets were current-month only, so there was no way to see whether last
@@ -53,6 +77,8 @@ export default function Budgets() {
   const [totals, setTotals] = useState<Totals | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const isCurrentMonth = month === monthKey();
+  const toast = useToast();
+  const { confirm, confirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
     const { budgets, totals } = await api.listBudgets(month);
@@ -62,10 +88,17 @@ export default function Budgets() {
 
   const { loading, error, reload } = useAuthenticatedLoad(load);
 
-  async function remove(id: number) {
-    setBusyId(id);
+  async function remove(b: Budget) {
+    const ok = await confirm({
+      title: `Remove the ${b.category} budget?`,
+      description: "Your transactions are untouched — this only stops tracking against a limit.",
+      confirmLabel: "Remove budget",
+    });
+    if (!ok) return;
+    setBusyId(b.id);
     try {
-      await api.deleteBudget(id);
+      await api.deleteBudget(b.id);
+      toast.success(`${b.category} budget removed`);
       await reload();
     } finally {
       setBusyId(null);
@@ -75,187 +108,212 @@ export default function Budgets() {
   const overallPercent =
     totals && totals.limit > 0 ? Math.round((totals.spent / totals.limit) * 100) : 0;
   const overallOver = totals ? totals.spent > totals.limit : false;
+  const elapsed = monthProgress(month);
+  const overCount = budgets.filter((b) => b.over).length;
 
   return (
-    <div className="p-6 lg:p-8 space-y-8">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">Budgets</h2>
-          <div className="mt-1 flex items-center gap-1">
-            <button
-              onClick={() => setMonth(monthKey(-1))}
-              title="Previous month"
-              className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="min-w-[9rem] text-center text-sm text-muted-foreground">
-              {monthLabel(month)}
-            </span>
-            <button
-              onClick={() => setMonth(monthKey())}
-              disabled={isCurrentMonth}
-              title="Next month"
-              className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            {!isCurrentMonth && (
+    <PageShell className="space-y-6">
+      {confirmDialog}
+      <PageHeader
+        title="Budgets"
+        description="A monthly ceiling per category. The bar turns amber at 80% and red when you cross it."
+        actions={
+          <>
+            {/* Month stepper. It used to be three unlabelled chevrons under the
+                heading; it is a single control now, which is what it is. */}
+            <div className="flex items-center rounded-md border border-border">
+              <button
+                onClick={() => setMonth(monthKey(-1))}
+                aria-label="Previous month"
+                className="flex size-9 items-center justify-center rounded-l-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:size-8"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <span className="min-w-36 border-x border-border px-3 text-center text-[0.8125rem] font-medium leading-8">
+                {monthLabel(month)}
+              </span>
               <button
                 onClick={() => setMonth(monthKey())}
-                className="ml-1 text-xs text-primary hover:underline"
+                disabled={isCurrentMonth}
+                aria-label="This month"
+                className="flex size-9 items-center justify-center rounded-r-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent sm:size-8"
               >
-                This month
+                <ChevronRight className="size-4" />
               </button>
-            )}
-          </div>
-        </div>
-        <BudgetDialog
-          onSaved={reload}
-          trigger={
-            <Button size="sm">
-              <Plus className="h-4 w-4" />
-              Add budget
-            </Button>
-          }
-        />
-      </div>
+            </div>
+            <BudgetDialog
+              onSaved={reload}
+              trigger={
+                <Button>
+                  <Plus />
+                  Add budget
+                </Button>
+              }
+            />
+          </>
+        }
+      />
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
+        <SkeletonCards count={6} />
       ) : error ? (
-        <LoadError message={error} onRetry={reload} />
-      ) : budgets.length === 0 ? (
-        <Card className="glass flex flex-col items-center gap-3 py-16 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-            <Target className="h-7 w-7 text-primary" />
-          </div>
-          <div>
-            <p className="font-medium">No budgets yet</p>
-            <p className="mt-1 text-sm text-muted-foreground max-w-xs">
-              Set a monthly limit for categories like Groceries or Food &amp; Dining, and track your
-              spending against it as the month goes.
-            </p>
-          </div>
-          <BudgetDialog
-            onSaved={reload}
-            trigger={
-              <Button size="sm" variant="secondary">
-                <Plus className="h-4 w-4" />
-                Create a budget
-              </Button>
-            }
-          />
+        <Card className="p-4">
+          <LoadError message={error} onRetry={reload} />
         </Card>
+      ) : budgets.length === 0 ? (
+        <EmptyState
+          icon={PiggyBank}
+          title={isCurrentMonth ? "No budgets yet" : `No budgets in ${monthLabel(month)}`}
+          description="Set a monthly limit on the categories that get away from you — groceries, dining, shopping — and watch the bar rather than the balance."
+          action={
+            <BudgetDialog
+              onSaved={reload}
+              trigger={
+                <Button>
+                  <Plus />
+                  Create a budget
+                </Button>
+              }
+            />
+          }
+        />
       ) : (
         <>
-          {/* Overall summary */}
+          {/* Everything, at a glance */}
           {totals && (
-            <Card className="glass p-5">
-              <div className="flex items-baseline justify-between">
+            <Card className="p-5">
+              <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <div className="text-sm text-muted-foreground">
-                    Spent in {monthLabel(month).split(" ")[0]}
-                  </div>
-                  <div className="mt-0.5 text-2xl font-bold tracking-tight">
-                    {formatMoney(totals.spent)}{" "}
-                    <span className="text-base font-medium text-muted-foreground">
+                  <p className="eyebrow">Spent in {monthLabel(month).split(" ")[0]}</p>
+                  <p className="tnum mt-2 text-3xl font-semibold tracking-tight">
+                    {formatMoney(totals.spent)}
+                    <span className="ml-2 text-base font-normal text-muted-foreground">
                       of {formatMoney(totals.limit)}
                     </span>
-                  </div>
+                  </p>
                 </div>
-                <div className={cn("text-right text-sm font-semibold", tone(overallPercent, overallOver).text)}>
-                  {overallOver
-                    ? `${formatMoney(-totals.remaining)} over`
-                    : `${formatMoney(totals.remaining)} left`}
+                <div className="text-right">
+                  <p
+                    className={cn(
+                      "tnum text-sm font-medium",
+                      TONE_TEXT[tone(overallPercent, overallOver)],
+                    )}
+                  >
+                    {overallOver
+                      ? `${formatMoney(-totals.remaining)} over`
+                      : `${formatMoney(totals.remaining)} left`}
+                  </p>
+                  {overCount > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {overCount} categor{overCount === 1 ? "y is" : "ies are"} over
+                    </p>
+                  )}
                 </div>
               </div>
-              <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-background/60">
-                <div
-                  className={cn("h-full rounded-full transition-all", tone(overallPercent, overallOver).bar)}
-                  style={{ width: `${Math.min(overallPercent, 100)}%` }}
-                />
+
+              <div className="relative mt-4">
+                <Meter value={overallPercent / 100} tone={tone(overallPercent, overallOver)} />
+                {/*
+                  The pace marker: where spending would be if it were even across
+                  the month. Being left of it is the whole game, and no amount of
+                  percentage text says it as fast as a line does.
+                */}
+                {isCurrentMonth && (
+                  <div
+                    className="absolute -top-1 h-3.5 w-px bg-foreground/50"
+                    style={{ left: `${elapsed * 100}%` }}
+                    title="Where an even month would be by today"
+                  />
+                )}
               </div>
+              {isCurrentMonth && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {Math.round(elapsed * 100)}% through the month · the marker shows an even pace
+                </p>
+              )}
             </Card>
           )}
 
-          {/* Budget cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {budgets.map((b, i) => {
+          {/* Per-category */}
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {budgets.map((b) => {
               const Icon = getCategoryIcon(b.category);
               const t = tone(b.percent, b.over);
+              // Ahead of pace by more than 10 points is worth flagging even when
+              // the category is nowhere near its limit yet.
+              const paceOff = isCurrentMonth && !b.over && b.percent / 100 - elapsed > 0.1;
               return (
-                <Card
-                  key={b.id}
-                  className="glass group relative p-5 animate-in-up"
-                  style={{ animationDelay: `${i * 50}ms` }}
-                >
+                <Card key={b.id} className="p-5">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-background/50">
-                      <Icon className={cn("h-5 w-5", t.text)} />
-                    </div>
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                      <Icon className={cn("size-4", TONE_TEXT[t])} />
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-semibold">{b.category}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatMoney(b.limit)} / month
-                      </div>
+                      <p className="truncate text-sm font-medium">{b.category}</p>
+                      <p className="tnum text-xs text-muted-foreground">
+                        {formatMoney(b.limit)} a month
+                      </p>
                     </div>
-
-                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    {/*
+                      Both controls are always visible. They used to appear on
+                      hover, which meant that on a phone — where there is no
+                      hover — a budget could be created and then never edited or
+                      removed again.
+                    */}
+                    <div className="flex shrink-0 items-center">
                       <BudgetDialog
                         budget={b}
                         onSaved={reload}
                         trigger={
                           <button
-                            title="Edit limit"
-                            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                            aria-label={`Edit the ${b.category} limit`}
+                            className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:size-8"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="size-4" />
                           </button>
                         }
                       />
                       <button
-                        onClick={() => remove(b.id)}
+                        onClick={() => remove(b)}
                         disabled={busyId === b.id}
-                        title="Delete"
-                        className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+                        aria-label={`Remove the ${b.category} budget`}
+                        className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-rose-400 sm:size-8"
                       >
-                        {busyId === b.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
+                        <Trash2 className="size-4" />
                       </button>
                     </div>
                   </div>
 
-                  {/* Progress */}
                   <div className="mt-5">
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-lg font-bold tracking-tight">{formatMoney(b.spent)}</span>
-                      <span className={cn("text-sm font-semibold", t.text)}>{b.percent}%</span>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="tnum text-xl font-semibold tracking-tight">
+                        {formatMoney(b.spent)}
+                      </span>
+                      <span className={cn("tnum text-sm font-medium", TONE_TEXT[t])}>
+                        {b.percent}%
+                      </span>
                     </div>
-                    <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-background/60">
-                      <div
-                        className={cn("h-full rounded-full transition-all duration-500", t.bar)}
-                        style={{ width: `${Math.min(b.percent, 100)}%` }}
-                      />
+                    <div className="relative mt-2.5">
+                      <Meter value={b.percent / 100} tone={t} />
+                      {isCurrentMonth && (
+                        <div
+                          className="absolute -top-1 h-3.5 w-px bg-foreground/40"
+                          style={{ left: `${elapsed * 100}%` }}
+                        />
+                      )}
                     </div>
-                    <div className="mt-1.5 flex items-center justify-between text-xs">
+                    <div className="mt-2.5 flex items-center justify-between gap-2 text-xs">
                       {b.over ? (
-                        <span className="flex items-center gap-1 font-medium text-rose-400">
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          {formatMoney(-b.remaining)} over budget
+                        <span className="tnum flex items-center gap-1.5 font-medium text-rose-400">
+                          <AlertTriangle className="size-3.5" />
+                          {formatMoney(-b.remaining)} over
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">
+                        <span className="tnum text-muted-foreground">
                           {formatMoney(b.remaining)} left
                         </span>
                       )}
-                      <span className="text-muted-foreground">of {formatMoney(b.limit)}</span>
+                      {paceOff && <Badge variant="warning">Ahead of pace</Badge>}
                     </div>
                   </div>
                 </Card>
@@ -264,6 +322,6 @@ export default function Budgets() {
           </div>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

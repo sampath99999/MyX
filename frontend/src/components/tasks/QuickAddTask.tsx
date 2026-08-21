@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Loader2, Flag, X } from "lucide-react";
+import { Plus, Flag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, type Label } from "@/lib/api";
 import { todayISO } from "@/pages/tasks/context";
@@ -95,25 +95,33 @@ export default function QuickAddTask({
   ];
 
   return (
-    <form onSubmit={submit} className="rounded-xl border border-border/60 bg-card/60 p-2">
-      <div className="flex items-center gap-2">
-        <Plus className="ml-1 h-4 w-4 text-muted-foreground" />
+    <form
+      onSubmit={submit}
+      className={cn(
+        "rounded-xl border bg-card transition-colors",
+        focused ? "border-ring" : "border-border",
+      )}
+    >
+      <div className="flex items-center gap-2 p-2">
+        <Plus className="ml-1 size-4 shrink-0 text-muted-foreground" />
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onFocus={() => setFocused(true)}
           placeholder={placeholder}
-          className="flex-1 bg-transparent px-1 py-1.5 text-sm outline-none placeholder:text-muted-foreground/60"
+          /* 32px is a small thing to aim at, and this is the field the whole
+             row exists for. */
+          className="h-10 min-w-0 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground/60"
         />
         {canAdd && (
-          <Button type="submit" size="sm" disabled={busy}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+          <Button type="submit" size="sm" loading={busy}>
+            Add
           </Button>
         )}
       </div>
 
       {(focused || title) && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/40 px-1 pt-2">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border px-3 py-2">
           {dueChips.map((chip) => (
             <button
               key={chip.label}
@@ -122,7 +130,7 @@ export default function QuickAddTask({
               className={cn(
                 "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
                 (preview.due_date ?? due) === chip.value
-                  ? "border-primary/40 bg-primary/15 text-foreground"
+                  ? "border-transparent bg-foreground text-background"
                   : "border-border text-muted-foreground hover:bg-accent",
               )}
             >
@@ -133,7 +141,7 @@ export default function QuickAddTask({
             type="date"
             value={due ?? ""}
             onChange={(e) => setDue(e.target.value || null)}
-            className="rounded-full border border-border bg-transparent px-2 py-1 text-xs text-muted-foreground outline-none focus:border-primary/50"
+            className="rounded-full border border-border bg-transparent px-2 py-1 text-xs text-muted-foreground outline-none focus:border-ring"
           />
           <span className="mx-1 h-4 w-px bg-border" />
           {PRIOS.map((p) => (
@@ -144,17 +152,17 @@ export default function QuickAddTask({
               className={cn(
                 "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition-colors",
                 (preview.priority ?? priority) === p.value
-                  ? "border-primary/40 bg-primary/15 text-foreground"
+                  ? "border-transparent bg-secondary text-foreground"
                   : "border-border text-muted-foreground hover:bg-accent",
               )}
             >
-              <Flag className={cn("h-3 w-3", p.color)} />
+              <Flag className={cn("size-3", p.color)} />
               {p.label}
             </button>
           ))}
           {priority !== 4 && (
             <button type="button" onClick={() => setPriority(4)} className="text-muted-foreground/60 hover:text-foreground" title="Clear priority">
-              <X className="h-3.5 w-3.5" />
+              <X className="size-3.5" />
             </button>
           )}
         </div>

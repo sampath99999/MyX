@@ -1,27 +1,52 @@
-import { useCallback, useState } from "react";
-import { Plus, Target, Trash2, Loader2, CheckCircle2, CalendarDays, Wallet } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { Plus, Target, Trash2, CheckCircle2, CalendarDays, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Stat, Meter } from "@/components/ui/stat";
+import { PageShell, PageHeader, Section, EmptyState } from "@/components/ui/page";
+import { SkeletonCards } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import NewGoalDialog from "@/components/NewGoalDialog";
 import AddFundsDialog from "@/components/AddFundsDialog";
 import LoadError from "@/components/LoadError";
 import { api, formatMoney, type Goal } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
+import { cn } from "@/lib/utils";
 
-function daysLeft(date: string): string {
-  const diff = Math.ceil(
-    (new Date(date + "T00:00:00").getTime() - Date.now()) / (1000 * 60 * 60 * 24),
-  );
-  if (diff < 0) return "Overdue";
+function daysUntil(date: string) {
+  return Math.ceil((new Date(date + "T00:00:00").getTime() - Date.now()) / 86_400_000);
+}
+
+function deadlineLabel(date: string): string {
+  const diff = daysUntil(date);
+  if (diff < 0) return `${-diff} days past`;
   if (diff === 0) return "Due today";
   if (diff < 45) return `${diff} days left`;
   const months = Math.round(diff / 30);
   return `~${months} month${months === 1 ? "" : "s"} left`;
 }
 
+/**
+ * What this goal needs per month to land on time.
+ *
+ * A goal screen that only shows a percentage answers "how far am I" and never
+ * "am I going to make it" — which is the question that changes behaviour. With
+ * a target date the answer is arithmetic, so the card does it.
+ */
+function monthlyNeeded(g: Goal): number | null {
+  if (!g.target_date || g.percent >= 100) return null;
+  const days = daysUntil(g.target_date);
+  if (days <= 0) return null;
+  return g.remaining / Math.max(1, days / 30);
+}
+
 export default function Goals() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const toast = useToast();
+  const { confirm, confirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
     const { goals } = await api.listGoals();
@@ -30,151 +55,194 @@ export default function Goals() {
 
   const { loading, error, reload } = useAuthenticatedLoad(load);
 
-  async function onDelete(id: number) {
-    setDeletingId(id);
+  async function onDelete(g: Goal) {
+    const ok = await confirm({
+      title: `Delete "${g.name}"?`,
+      description: `The goal and its ${formatMoney(g.saved)} of recorded contributions are removed. Your balance is not affected — goals never moved real money.`,
+      confirmLabel: "Delete goal",
+    });
+    if (!ok) return;
+    setDeletingId(g.id);
     try {
-      await api.deleteGoal(id);
+      await api.deleteGoal(g.id);
+      toast.success(`"${g.name}" deleted`);
       await reload();
     } finally {
       setDeletingId(null);
     }
   }
 
-  const totalTarget = goals.reduce((s, g) => s + g.target, 0);
-  const totalSaved = goals.reduce((s, g) => s + g.saved, 0);
+  const { active, done, totalTarget, totalSaved } = useMemo(() => {
+    const done = goals.filter((g) => g.percent >= 100);
+    return {
+      active: goals.filter((g) => g.percent < 100),
+      done,
+      totalTarget: goals.reduce((s, g) => s + g.target, 0),
+      totalSaved: goals.reduce((s, g) => s + g.saved, 0),
+    };
+  }, [goals]);
 
-  return (
-    <div className="p-6 lg:p-8 space-y-8">
-      {/* Header row */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">Savings Goals</h2>
-          {goals.length > 0 && (
-            <p className="text-sm text-muted-foreground">
-              {formatMoney(totalSaved)} saved toward {formatMoney(totalTarget)} across{" "}
-              {goals.length} goal{goals.length === 1 ? "" : "s"}
-            </p>
-          )}
+  const card = (g: Goal) => {
+    const complete = g.percent >= 100;
+    const perMonth = monthlyNeeded(g);
+    const late = g.target_date != null && !complete && daysUntil(g.target_date) < 0;
+    return (
+      <Card key={g.id} className="flex flex-col p-5">
+        <div className="flex items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-lg">
+            {g.emoji || "🎯"}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{g.name}</p>
+            {complete ? (
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                <CheckCircle2 className="size-3.5" /> Reached
+              </p>
+            ) : g.target_date ? (
+              <p
+                className={cn(
+                  "mt-0.5 flex items-center gap-1.5 text-xs",
+                  late ? "font-medium text-rose-400" : "text-muted-foreground",
+                )}
+              >
+                <CalendarDays className="size-3.5" /> {deadlineLabel(g.target_date)}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">No deadline</p>
+            )}
+          </div>
+          {/*
+            Always visible. It used to be `opacity-0 group-hover:opacity-100`,
+            which on a touchscreen means a goal can be created and then never
+            deleted.
+          */}
+          <button
+            onClick={() => onDelete(g)}
+            disabled={deletingId === g.id}
+            aria-label={`Delete ${g.name}`}
+            className="-mr-1.5 -mt-1.5 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-rose-400"
+          >
+            <Trash2 className="size-4" />
+          </button>
         </div>
-        <NewGoalDialog
-          onCreated={reload}
+
+        <div className="mt-5">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="tnum text-xl font-semibold tracking-tight">{formatMoney(g.saved)}</span>
+            <span className="tnum text-sm text-muted-foreground">of {formatMoney(g.target)}</span>
+          </div>
+          <Meter className="mt-2.5" value={g.percent / 100} tone={complete ? "positive" : "default"} />
+          <div className="mt-2.5 flex items-center justify-between gap-2 text-xs">
+            <span className="tnum font-medium">{g.percent}%</span>
+            <span className="tnum text-muted-foreground">
+              {complete ? "Complete" : `${formatMoney(g.remaining)} to go`}
+            </span>
+          </div>
+        </div>
+
+        {perMonth != null && (
+          <p className="tnum mt-3 rounded-md bg-secondary/60 px-2.5 py-1.5 text-xs text-muted-foreground">
+            Put aside <span className="font-medium text-foreground">{formatMoney(Math.round(perMonth))}</span>{" "}
+            a month to land on time
+          </p>
+        )}
+
+        <AddFundsDialog
+          goal={g}
+          onDone={reload}
           trigger={
-            <Button size="sm">
-              <Plus className="h-4 w-4" />
-              New goal
+            <Button variant="outline" className="mt-4 w-full">
+              <Wallet />
+              {complete ? "Manage funds" : "Add funds"}
             </Button>
           }
         />
-      </div>
+      </Card>
+    );
+  };
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
-      ) : error ? (
-        <LoadError message={error} onRetry={reload} />
-      ) : goals.length === 0 ? (
-        <Card className="glass flex flex-col items-center gap-3 py-16 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-            <Target className="h-7 w-7 text-primary" />
-          </div>
-          <div>
-            <p className="font-medium">No goals yet</p>
-            <p className="mt-1 text-sm text-muted-foreground max-w-xs">
-              Create your first savings goal — a trip, a gadget, or an emergency fund — and track
-              your progress.
-            </p>
-          </div>
+  return (
+    <PageShell className="space-y-6">
+      {confirmDialog}
+      <PageHeader
+        title="Savings goals"
+        description="What you are putting money aside for. Goals are a tracker — contributions never move your real balance."
+        actions={
           <NewGoalDialog
             onCreated={reload}
             trigger={
-              <Button size="sm" variant="secondary">
-                <Plus className="h-4 w-4" />
-                Create a goal
+              <Button>
+                <Plus />
+                New goal
               </Button>
             }
           />
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {goals.map((g, i) => {
-            const done = g.percent >= 100;
-            return (
-              <Card
-                key={g.id}
-                className="glass group relative p-5 animate-in-up"
-                style={{ animationDelay: `${i * 60}ms` }}
-              >
-                <button
-                  onClick={() => onDelete(g.id)}
-                  disabled={deletingId === g.id}
-                  title="Delete goal"
-                  className="absolute right-4 top-4 text-muted-foreground/40 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 disabled:opacity-100"
-                >
-                  {deletingId === g.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                </button>
+        }
+      />
 
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-background/50 text-xl">
-                    {g.emoji || "🎯"}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold">{g.name}</div>
-                    {done ? (
-                      <div className="flex items-center gap-1 text-xs font-medium text-emerald-400">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Goal reached!
-                      </div>
-                    ) : g.target_date ? (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <CalendarDays className="h-3.5 w-3.5" /> {daysLeft(g.target_date)}
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground">No deadline</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Progress */}
-                <div className="mt-5">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-lg font-bold tracking-tight">{formatMoney(g.saved)}</span>
-                    <span className="text-sm text-muted-foreground">of {formatMoney(g.target)}</span>
-                  </div>
-                  <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-background/60">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        done
-                          ? "bg-gradient-to-r from-emerald-500 to-emerald-400"
-                          : "bg-gradient-to-r from-primary to-violet-400"
-                      }`}
-                      style={{ width: `${g.percent}%` }}
-                    />
-                  </div>
-                  <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">{g.percent}%</span>
-                    <span>{done ? "Complete" : `${formatMoney(g.remaining)} to go`}</span>
-                  </div>
-                </div>
-
-                <AddFundsDialog
-                  goal={g}
-                  onDone={reload}
-                  trigger={
-                    <Button variant="secondary" size="sm" className="mt-5 w-full">
-                      <Wallet className="h-4 w-4" />
-                      {done ? "Manage funds" : "Add funds"}
-                    </Button>
-                  }
-                />
-              </Card>
-            );
-          })}
+      {!loading && !error && goals.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Stat label="Saved so far" value={formatMoney(totalSaved)} icon={Wallet} tone="positive" />
+          <Stat
+            label="Total target"
+            value={formatMoney(totalTarget)}
+            icon={Target}
+            sub={`Across ${goals.length} goal${goals.length === 1 ? "" : "s"}`}
+          />
+          <Stat
+            label="Reached"
+            value={`${done.length} of ${goals.length}`}
+            icon={CheckCircle2}
+            sub={
+              totalTarget > 0
+                ? `${Math.round((totalSaved / totalTarget) * 100)}% of everything you are saving for`
+                : undefined
+            }
+          />
         </div>
       )}
-    </div>
+
+      {loading ? (
+        <SkeletonCards count={6} />
+      ) : error ? (
+        <Card className="p-4">
+          <LoadError message={error} onRetry={reload} />
+        </Card>
+      ) : goals.length === 0 ? (
+        <EmptyState
+          icon={Target}
+          title="No goals yet"
+          description="Name the thing you are saving for — a trip, a laptop, six months of runway — and MyX works out what you need to put aside each month."
+          action={
+            <NewGoalDialog
+              onCreated={reload}
+              trigger={
+                <Button>
+                  <Plus />
+                  Create a goal
+                </Button>
+              }
+            />
+          }
+        />
+      ) : (
+        <div className="space-y-6">
+          {active.length > 0 && (
+            <Section title="In progress">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{active.map(card)}</div>
+            </Section>
+          )}
+          {done.length > 0 && (
+            <Section
+              title="Reached"
+              description="Kept here rather than archived — finishing one is the point"
+              actions={<Badge variant="success">{done.length}</Badge>}
+            >
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{done.map(card)}</div>
+            </Section>
+          )}
+        </div>
+      )}
+    </PageShell>
   );
 }

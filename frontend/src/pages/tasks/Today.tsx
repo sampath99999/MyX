@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import { Sun, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Sun } from "lucide-react";
 import QuickAddTask from "@/components/tasks/QuickAddTask";
 import TaskItem from "@/components/tasks/TaskItem";
+import { Card } from "@/components/ui/card";
+import { PageShell, PageHeader, Section, EmptyState } from "@/components/ui/page";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { api, type Task } from "@/lib/api";
 import { useTasksContext } from "./context";
 
@@ -42,26 +45,54 @@ export default function Today() {
     return undefined;
   };
 
+  /*
+    Overdue is split out rather than sorted to the top.
+
+    "Today" used to mean "due on or before today", which put a task that slipped
+    three weeks ago in the same list as one due this afternoon — the same
+    typography, the same position, nothing saying one of them had already
+    failed. Two headings costs nothing and makes the backlog impossible to miss.
+  */
+  const { overdue, today } = useMemo(
+    () => ({
+      overdue: tasks.filter((t) => t.due_date != null && t.due_date < ctx.today),
+      today: tasks.filter((t) => t.due_date == null || t.due_date >= ctx.today),
+    }),
+    [tasks, ctx.today],
+  );
+
   const heading = new Date(ctx.today + "T00:00:00").toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
 
+  const list = (items: Task[]) => (
+    <Card className="overflow-hidden">
+      {items.map((t) => (
+        <TaskItem
+          key={t.id}
+          task={t}
+          context={contextFor(t)}
+          allLabels={ctx.labels}
+          onChanged={reload}
+          onLabelsChanged={ctx.reloadAll}
+        />
+      ))}
+    </Card>
+  );
+
   return (
-    <div className="mx-auto max-w-2xl p-6 lg:p-8 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
-          <Sun className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Today</h1>
-          <p className="text-xs text-muted-foreground">
-            {heading}
-            {ctx.currentSpace ? ` · ${ctx.currentSpace.icon} ${ctx.currentSpace.name}` : " · All spaces"}
-          </p>
-        </div>
-      </div>
+    <PageShell width="narrow" className="space-y-5">
+      <PageHeader
+        eyebrow={heading}
+        title="Today"
+        description={
+          ctx.currentSpace
+            ? `${ctx.currentSpace.icon} ${ctx.currentSpace.name}`
+            : "Across every space"
+        }
+      />
 
       <QuickAddTask
         spaceId={targetSpace}
@@ -72,30 +103,34 @@ export default function Today() {
       />
 
       {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
+        <SkeletonRows count={4} />
       ) : tasks.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center">
-          <div className="text-3xl">🎉</div>
-          <p className="text-sm text-muted-foreground">
-            Nothing due today. Enjoy — or add something above.
-          </p>
-        </div>
+        <EmptyState
+          icon={Sun}
+          title="Nothing due today"
+          description="Add something above, or go and enjoy the gap. Anything scheduled further out is under Upcoming."
+        />
       ) : (
-        <div className="flex flex-col">
-          {tasks.map((t) => (
-            <TaskItem
-              key={t.id}
-              task={t}
-              context={contextFor(t)}
-              allLabels={ctx.labels}
-              onChanged={reload}
-              onLabelsChanged={ctx.reloadAll}
-            />
-          ))}
+        <div className="space-y-5">
+          {overdue.length > 0 && (
+            <Section
+              title={<span className="text-rose-400">Overdue</span>}
+              description={`${overdue.length} task${overdue.length === 1 ? "" : "s"} slipped past their date`}
+            >
+              {list(overdue)}
+            </Section>
+          )}
+          {today.length > 0 && (
+            <Section title={overdue.length > 0 ? "Due today" : undefined}>{list(today)}</Section>
+          )}
+          {overdue.length === 0 && (
+            <p className="flex items-center justify-center gap-2 pt-1 text-xs text-muted-foreground">
+              <CheckCircle2 className="size-3.5 text-emerald-400" />
+              Nothing overdue
+            </p>
+          )}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

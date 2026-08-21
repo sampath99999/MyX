@@ -11,6 +11,8 @@
   every route looked like duplicate content of the home page.
 */
 
+import { CALCULATORS, pathFor } from "@/lib/calculators/registry";
+
 export const SITE_URL = "https://myx.samchitech.com";
 
 export interface PageMeta {
@@ -40,16 +42,45 @@ export const PAGES: PageMeta[] = [
     path: "/privacy",
     title: "Privacy — MyX",
     description:
-      "What MyX stores, how it is protected, and how to delete it. No analytics, no advertising pixels, no third-party trackers.",
+      "What MyX stores, who can see it, and how to export or delete it. No analytics, no advertising pixels, no third-party trackers, and no bank connection.",
     sitemap: { changefreq: "yearly", priority: "0.3" },
   },
   {
     path: "/terms",
     title: "Terms of use — MyX",
-    description: "The terms covering your MyX account, your data, and what is and is not guaranteed.",
+    description:
+      "The terms covering your MyX account and your data: free to use, yours to export or delete, and not financial advice. Written plainly.",
     sitemap: { changefreq: "yearly", priority: "0.3" },
   },
 ];
+
+/*
+  Every registry-driven calculator, as its own indexable page.
+
+  Generated rather than hand-listed so that adding a calculator to the registry
+  cannot leave it out of the sitemap, out of the prerender, or without a
+  <title> — three separate ways the same omission used to be possible.
+
+  Priority 0.8: below the home page and the EMI calculator (the flagship tool
+  and the term most likely to bring anyone here at all), above the legal pages.
+*/
+const CALCULATOR_PAGES: PageMeta[] = CALCULATORS.map((c) => ({
+  path: pathFor(c.slug),
+  title: c.title,
+  description: c.description,
+  sitemap: { changefreq: "monthly", priority: "0.8" },
+}));
+
+PAGES.push(
+  {
+    path: "/calculators",
+    title: "Free Financial Calculators — SIP, EMI, FD, PPF, GST & More | MyX",
+    description:
+      "Free financial calculators for India: SIP, lumpsum, EMI, FD, RD, PPF, compound interest, CAGR, GST and inflation. Each shows its formula and sources. No signup.",
+    sitemap: { changefreq: "weekly", priority: "0.9" },
+  },
+  ...CALCULATOR_PAGES,
+);
 
 export function metaFor(pathname: string): PageMeta | undefined {
   return PAGES.find((p) => p.path === pathname);

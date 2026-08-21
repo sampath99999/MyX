@@ -259,6 +259,39 @@ describe("REQUIRE_VERIFIED_EMAIL", () => {
     expect(res.status).toBe(200);
   });
 
+  /*
+    The client cannot see REQUIRE_VERIFIED_EMAIL, and it decides whether the
+    sign-up screen offers a way past the code step. Getting it wrong drops
+    someone onto a dashboard that answers 403 to every panel, so the flag is
+    stated on every response that carries a session.
+  */
+  it("tells the client whether verification is a wall or a nudge", async () => {
+    const gated = makeApp({ REQUIRE_VERIFIED_EMAIL: "true" });
+    const registered = (await (await gated("/api/auth/register", NEW_USER)).json()) as {
+      token: string;
+      verification_required: boolean;
+    };
+    expect(registered.verification_required).toBe(true);
+
+    const signedIn = (await (
+      await gated("/api/auth/login", { email: NEW_USER.email, password: NEW_USER.password })
+    ).json()) as { verification_required: boolean };
+    expect(signedIn.verification_required).toBe(true);
+
+    const me = (await (
+      await gated("/api/auth/me", undefined, registered.token, "GET")
+    ).json()) as { verification_required: boolean };
+    expect(me.verification_required).toBe(true);
+  });
+
+  it("reports verification as optional when the gate is off", async () => {
+    const open = makeApp();
+    const registered = (await (await open("/api/auth/register", NEW_USER)).json()) as {
+      verification_required: boolean;
+    };
+    expect(registered.verification_required).toBe(false);
+  });
+
   it("keeps /api/auth reachable so the code can still be entered", async () => {
     const gated = makeApp({ REQUIRE_VERIFIED_EMAIL: "true" });
     const { token } = await signUp(gated);

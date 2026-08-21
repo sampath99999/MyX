@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarRange, Loader2 } from "lucide-react";
+import { CalendarRange } from "lucide-react";
 import TaskItem from "@/components/tasks/TaskItem";
+import { Card } from "@/components/ui/card";
+import { PageShell, PageHeader, Section, EmptyState } from "@/components/ui/page";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { api, type Task } from "@/lib/api";
 import { useTasksContext } from "./context";
 
@@ -60,37 +63,33 @@ export default function Upcoming() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-6 lg:p-8 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 text-violet-400">
-          <CalendarRange className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Upcoming</h1>
-          <p className="text-xs text-muted-foreground">
-            Scheduled ahead
-            {ctx.currentSpace ? ` · ${ctx.currentSpace.icon} ${ctx.currentSpace.name}` : " · All spaces"}
-          </p>
-        </div>
-      </div>
+    <PageShell width="narrow" className="space-y-5">
+      <PageHeader
+        title="Upcoming"
+        description={
+          ctx.currentSpace
+            ? `Scheduled ahead in ${ctx.currentSpace.icon} ${ctx.currentSpace.name}`
+            : "Everything scheduled ahead, across every space"
+        }
+      />
 
       {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
+        <SkeletonRows count={5} />
       ) : groups.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center">
-          <div className="text-3xl">🗓️</div>
-          <p className="text-sm text-muted-foreground">Nothing scheduled ahead. You're all clear.</p>
-        </div>
+        <EmptyState
+          icon={CalendarRange}
+          title="Nothing scheduled ahead"
+          description="Tasks with a future due date show up here, grouped by day. Anything without a date sits in the Inbox."
+        />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {groups.map((g) => (
-            <div key={g.date}>
-              <div className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {g.label}
-              </div>
-              <div className="flex flex-col">
+            <Section
+              key={g.date}
+              title={g.label}
+              description={`${g.tasks.length} task${g.tasks.length === 1 ? "" : "s"}`}
+            >
+              <Card className="overflow-hidden">
                 {g.tasks.map((t) => (
                   <TaskItem
                     key={t.id}
@@ -101,11 +100,11 @@ export default function Upcoming() {
                     onLabelsChanged={ctx.reloadAll}
                   />
                 ))}
-              </div>
-            </div>
+              </Card>
+            </Section>
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

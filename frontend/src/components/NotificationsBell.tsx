@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { Bell, CheckCircle2, Wallet, PiggyBank, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { Bell, CheckCircle2, Wallet, PiggyBank, Loader2, CheckCheck } from "lucide-react";
 import { api, type Notification } from "@/lib/api";
+import { Menu, useMenuClose } from "@/components/ui/menu";
+import { cn } from "@/lib/utils";
 
 /*
   The bell.
@@ -26,13 +28,10 @@ const TONE: Record<Notification["severity"], string> = {
 };
 
 export default function NotificationsBell() {
-  const navigate = useNavigate();
   const { pathname } = useLocation();
-  const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [urgent, setUrgent] = useState(0);
   const [loading, setLoading] = useState(true);
-  const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let current = true;
@@ -52,86 +51,85 @@ export default function NotificationsBell() {
     };
   }, [pathname]);
 
-  // Close on an outside click or Escape — the two things every popover owes.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   return (
-    <div ref={wrapRef} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label={items.length ? `Notifications, ${items.length} items` : "Notifications"}
-        aria-expanded={open}
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <Bell className="h-[1.15rem] w-[1.15rem]" />
-        {items.length > 0 && (
-          <span
-            className={`absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ${
-              urgent > 0 ? "bg-rose-500" : "bg-amber-500"
-            }`}
-          >
-            {items.length > 9 ? "9+" : items.length}
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Notifications"
-          className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-xl border border-border/60 bg-popover shadow-2xl"
+    <Menu
+      align="end"
+      contentClassName="w-80 p-0 overflow-hidden"
+      trigger={
+        <button
+          aria-label={items.length ? `Notifications, ${items.length} items` : "Notifications"}
+          /* `tap` for the hit area and size-9 below md: this sits in a row of
+             adjacent controls on a phone, where 32px is a coin toss. */
+          className="tap relative flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:size-8"
         >
-          <div className="border-b border-border/60 px-4 py-3">
-            <p className="text-sm font-semibold">Needs you</p>
-          </div>
+          <Bell className="size-[1.05rem]" />
+          {items.length > 0 && (
+            /*
+              A dot, not a count. The count was a red circle with a number in
+              it on a bell that is never zero for long, which is the shape of a
+              social app demanding attention — this app's job is to be quiet
+              until something is actually late. Red only when something is.
+            */
+            <span
+              className={cn(
+                "absolute right-1 top-1 size-2 rounded-full ring-2 ring-background",
+                urgent > 0 ? "bg-rose-500" : "bg-amber-500",
+              )}
+            />
+          )}
+        </button>
+      }
+    >
+      <div className="flex items-center justify-between border-b border-border px-3.5 py-2.5">
+        <p className="text-sm font-semibold">Needs you</p>
+        {items.length > 0 && (
+          <span className="tnum text-xs text-muted-foreground">{items.length}</span>
+        )}
+      </div>
 
-          <div className="max-h-96 overflow-y-auto">
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              </div>
-            ) : items.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                Nothing overdue, nothing due. Enjoy it.
-              </p>
-            ) : (
-              items.map((item) => {
-                const Icon = ICONS[item.kind];
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setOpen(false);
-                      navigate(item.to);
-                    }}
-                    className="flex w-full items-start gap-3 border-b border-border/40 px-4 py-3 text-left last:border-0 hover:bg-accent"
-                  >
-                    <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${TONE[item.severity]}`} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{item.title}</span>
-                      {item.detail && (
-                        <span className="block text-xs text-muted-foreground">{item.detail}</span>
-                      )}
-                    </span>
-                  </button>
-                );
-              })
-            )}
+      <NotificationList items={items} loading={loading} />
+    </Menu>
+  );
+}
+
+/** Split out so it can call useMenuClose(), which only exists inside the menu. */
+function NotificationList({ items, loading }: { items: Notification[]; loading: boolean }) {
+  const close = useMenuClose();
+  return (
+      <div className="max-h-96 overflow-y-auto">
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="size-4 animate-spin text-muted-foreground" />
           </div>
-        </div>
-      )}
-    </div>
+        ) : items.length === 0 ? (
+          <div className="flex flex-col items-center px-4 py-10 text-center">
+            <CheckCheck className="mb-2.5 size-5 text-emerald-400" />
+            <p className="text-sm font-medium">All clear</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Nothing overdue, nothing due. Enjoy it.
+            </p>
+          </div>
+        ) : (
+          items.map((item) => {
+            const Icon = ICONS[item.kind];
+            return (
+              <Link
+                key={item.id}
+                to={item.to}
+                onClick={close}
+                className="flex w-full items-start gap-3 border-b border-border/60 px-3.5 py-2.5 text-left transition-colors last:border-0 hover:bg-accent"
+              >
+                <Icon className={cn("mt-0.5 size-4 shrink-0", TONE[item.severity])} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{item.title}</span>
+                  {item.detail && (
+                    <span className="block text-xs text-muted-foreground">{item.detail}</span>
+                  )}
+                </span>
+              </Link>
+            );
+          })
+        )}
+      </div>
   );
 }

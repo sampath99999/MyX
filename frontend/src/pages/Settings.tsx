@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Loader2, ShieldAlert, Bell, Download, Check, Palette } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import Switch from "@/components/ui/switch";
 import { api, ApiError, clearToken, downloadExport } from "@/lib/api";
 import { useTheme, THEME_OPTIONS } from "@/lib/theme";
 
@@ -126,13 +127,13 @@ export default function Settings() {
             One email each morning listing bills due, tasks due and budgets running out — and only
             on days something is actually due. Quiet days send nothing.
           </p>
-          <label className="mt-5 flex cursor-pointer items-center gap-3">
-            <input
-              type="checkbox"
+          <div className="mt-4 flex items-center gap-3">
+            <Switch
+              className="min-w-0 flex-1"
+              label="Send me the daily digest"
               checked={digest}
               disabled={digestBusy}
-              onChange={async (e) => {
-                const next = e.target.checked;
+              onChange={async (next) => {
                 setDigest(next);
                 setDigestBusy(true);
                 try {
@@ -146,11 +147,9 @@ export default function Settings() {
                   setDigestBusy(false);
                 }
               }}
-              className="h-4 w-4 accent-primary"
             />
-            <span className="text-sm">Send me the daily digest</span>
-            {digestBusy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-          </label>
+            {digestBusy && <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />}
+          </div>
           {user?.email_verified === false && (
             <p className="mt-3 text-xs text-amber-300/80">
               Confirm your email address first — digests only go to verified addresses.

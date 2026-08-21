@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import {
-  Plus,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Wallet,
-  Upload,
-  Loader2,
-  ChevronDown,
-} from "lucide-react";
+import { Plus, Receipt, Upload, ChevronDown, ArrowUpRight, ArrowDownLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PageShell, PageHeader, EmptyState } from "@/components/ui/page";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import ImportStatementDialog from "@/components/ImportStatementDialog";
 import TransactionDetailsDialog from "@/components/TransactionDetailsDialog";
@@ -25,20 +19,15 @@ import {
   type TransactionTotals,
 } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
+import { cn } from "@/lib/utils";
 
 /*
   The transaction ledger.
 
-  The old list got three things wrong. It led with the category and demoted the
-  note, so a row read "Health · Pharmacy" when the useful word was Pharmacy and
-  the category was the metadata. It repeated the full date on every row, which
-  is noise by the ninth entry of the same day. And its edit and delete buttons
-  only appeared on hover, so on a phone they did not exist at all.
-
-  This groups by day with a running total per day, leads with what the money was
-  actually for, and moves editing into the row's own screen — which is a real
-  address (/money/transactions/:id), so it works by touch, by link and by back
-  button.
+  It groups by day with a running total per day, leads with what the money was
+  actually for rather than its category, and moves editing into the row's own
+  screen — which is a real address (/money/transactions/:id), so it works by
+  touch, by link and by back button.
 
   Filtering is done by the database, not over the rows already on screen. The
   page holds one slice of the history; filtering that slice would answer "last
@@ -148,8 +137,8 @@ export default function Transactions() {
   const grouped = !query.sort || query.sort.startsWith("date");
 
   const rows = (items: Transaction[], showDate: boolean) => (
-    <Card className="glass overflow-hidden">
-      <ul className="divide-y divide-border/50">
+    <Card className="overflow-hidden">
+      <ul className="divide-y divide-border">
         {items.map((t) => {
           const income = t.type === "income";
           const Icon = getCategoryIcon(t.category);
@@ -162,43 +151,46 @@ export default function Transactions() {
               */}
               <Link
                 to={`/money/transactions/${t.id}`}
-                className="flex items-center gap-3.5 px-4 py-3 transition-colors hover:bg-accent/40 sm:px-5"
+                className="group flex items-center gap-3.5 px-4 py-3 transition-colors hover:bg-accent/50"
               >
                 <span
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                    income ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"
-                  }`}
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                    income
+                      ? "bg-emerald-400/10 text-emerald-400"
+                      : "bg-secondary text-muted-foreground",
+                  )}
                 >
-                  <Icon className="h-[1.1rem] w-[1.1rem]" />
+                  <Icon className="size-4" />
                 </span>
 
                 <span className="min-w-0 flex-1">
                   {/* The note leads: it is what the money was for. The category
-                      is how it is classified, which is a detail — the old row
-                      had these the wrong way up. */}
+                      is how it is classified, which is a detail. */}
                   <span className="block truncate text-sm font-medium">
                     {t.note?.trim() || t.category}
                   </span>
-                  <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="truncate rounded bg-muted/60 px-1.5 py-0.5">{t.category}</span>
-                    {showDate && <span className="shrink-0">{dayLabel(t.occurred_on)}</span>}
+                  <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="truncate">{t.category}</span>
+                    {showDate && (
+                      <>
+                        <span className="text-muted-foreground/40">·</span>
+                        <span className="shrink-0">{dayLabel(t.occurred_on)}</span>
+                      </>
+                    )}
                   </span>
                 </span>
 
                 <span
-                  className={`shrink-0 text-sm font-semibold tabular-nums ${
-                    income ? "text-emerald-400" : "text-foreground"
-                  }`}
+                  className={cn(
+                    "tnum shrink-0 text-sm font-medium",
+                    income ? "text-emerald-400" : "text-foreground",
+                  )}
                 >
                   {income ? "+" : "−"}
                   {formatMoney(t.amount)}
                 </span>
-
-                {income ? (
-                  <ArrowUpRight className="h-4 w-4 shrink-0 text-emerald-400/50" />
-                ) : (
-                  <ArrowDownLeft className="h-4 w-4 shrink-0 text-muted-foreground/40" />
-                )}
+                <ChevronDown className="size-4 shrink-0 -rotate-90 text-muted-foreground/30 transition-transform group-hover:translate-x-0.5" />
               </Link>
             </li>
           );
@@ -208,108 +200,116 @@ export default function Transactions() {
   );
 
   return (
-    <div className="space-y-5 p-6 lg:p-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">Transactions</h2>
-          {totals && (
-            <p className="text-sm text-muted-foreground">
-              {totals.matched.toLocaleString("en-IN")}
-              {filtered ? " matching" : " total"} {totals.matched === 1 ? "entry" : "entries"}
-            </p>
-          )}
-        </div>
-        {/* One group, or `justify-between` spaces them apart as separate items. */}
-        <div className="flex items-center gap-2">
-          <ImportStatementDialog
-            onImported={reload}
-            trigger={
-              <Button size="sm" variant="secondary">
-                <Upload className="h-4 w-4" />
-                Import
-              </Button>
-            }
-          />
-          <AddTransactionDialog
-            onCreated={reload}
-            trigger={
-              <Button size="sm">
-                <Plus className="h-4 w-4" />
-                Add transaction
-              </Button>
-            }
-          />
-        </div>
-      </div>
+    <PageShell className="space-y-5">
+      <PageHeader
+        title="Transactions"
+        description={
+          totals
+            ? `${totals.matched.toLocaleString("en-IN")}${filtered ? " matching" : ""} ${
+                totals.matched === 1 ? "entry" : "entries"
+              }`
+            : "Every rupee in and out, in one ledger."
+        }
+        actions={
+          <>
+            <ImportStatementDialog
+              onImported={reload}
+              trigger={
+                <Button variant="outline">
+                  <Upload />
+                  Import
+                </Button>
+              }
+            />
+            <AddTransactionDialog
+              onCreated={reload}
+              trigger={
+                <Button>
+                  <Plus />
+                  Add
+                </Button>
+              }
+            />
+          </>
+        }
+      />
 
       <TransactionFilters query={query} onChange={setQuery} categories={categories} />
 
       {/* What the filtered set adds up to — the whole set, not this page. */}
       {totals && totals.matched > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-xl border border-border bg-card">
           {[
-            { label: "In", value: totals.income, tone: "text-emerald-400" },
-            { label: "Out", value: totals.expense, tone: "text-rose-400" },
+            { label: "In", value: totals.income, tone: "text-emerald-400", icon: ArrowUpRight },
+            { label: "Out", value: totals.expense, tone: "text-foreground", icon: ArrowDownLeft },
             {
               label: "Net",
               value: totals.net,
               tone: totals.net >= 0 ? "text-emerald-400" : "text-rose-400",
+              icon: null,
             },
           ].map((stat) => (
-            <Card key={stat.label} className="glass p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div key={stat.label} className="min-w-0 p-4">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                {stat.icon && <stat.icon className="size-3.5" />}
                 {stat.label}
               </p>
-              <p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${stat.tone}`}>
+              <p className={cn("tnum mt-1.5 truncate text-lg font-semibold", stat.tone)}>
                 {stat.label === "Net" && stat.value > 0 ? "+" : ""}
                 {formatMoney(stat.value)}
               </p>
-            </Card>
+            </div>
           ))}
         </div>
       )}
 
       {loading ? (
-        <Card className="glass flex items-center justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </Card>
+        <SkeletonRows count={8} />
       ) : error ? (
-        <Card className="glass">
+        <Card>
           <LoadError message={error} onRetry={reload} />
         </Card>
       ) : transactions.length === 0 ? (
-        <Card className="glass flex flex-col items-center gap-3 py-16 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Wallet className="h-6 w-6 text-primary" />
-          </div>
-          {filtered ? (
-            <>
-              <p className="text-sm text-muted-foreground">Nothing matches those filters.</p>
-              <button
-                onClick={() => setQuery({})}
-                className="text-sm font-medium text-primary hover:underline"
-              >
+        filtered ? (
+          <EmptyState
+            icon={Receipt}
+            title="Nothing matches those filters"
+            description="Try a wider date range, or clear the filters to see everything again."
+            action={
+              <Button variant="outline" onClick={() => setQuery({})}>
                 Clear filters
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="max-w-xs text-sm text-muted-foreground">
-                No transactions yet. Add your first income or expense, or import a bank statement to
-                bring your history in at once.
-              </p>
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Receipt}
+            title="No transactions yet"
+            description="Add your first income or expense, or import a bank statement to bring your whole history in at once."
+            action={
               <AddTransactionDialog
                 onCreated={reload}
                 trigger={
-                  <Button size="sm" variant="secondary">
-                    <Plus className="h-4 w-4" />
+                  <Button>
+                    <Plus />
                     Add transaction
                   </Button>
                 }
               />
-            </>
-          )}
-        </Card>
+            }
+            secondary={
+              <ImportStatementDialog
+                onImported={reload}
+                trigger={
+                  <Button variant="outline">
+                    <Upload />
+                    Import a statement
+                  </Button>
+                }
+              />
+            }
+          />
+        )
       ) : (
         <div className="space-y-5">
           {grouped ? (
@@ -317,11 +317,14 @@ export default function Transactions() {
               <section key={day.date}>
                 {/* The date is said once per day instead of once per row. */}
                 <div className="flex items-baseline justify-between gap-4 px-1 pb-2">
-                  <h3 className="text-sm font-semibold">{dayLabel(day.date)}</h3>
+                  <h3 className="text-[0.8125rem] font-semibold text-muted-foreground">
+                    {dayLabel(day.date)}
+                  </h3>
                   <span
-                    className={`text-xs font-medium tabular-nums ${
-                      day.net >= 0 ? "text-emerald-400" : "text-muted-foreground"
-                    }`}
+                    className={cn(
+                      "tnum text-xs font-medium",
+                      day.net >= 0 ? "text-emerald-400" : "text-muted-foreground",
+                    )}
                   >
                     {day.net >= 0 ? "+" : "−"}
                     {formatMoney(Math.abs(day.net))}
@@ -340,16 +343,12 @@ export default function Transactions() {
             end makes "the oldest one" unreachable.
           */}
           {moreToLoad && (
-            <div className="flex flex-col items-center gap-1.5 pt-1">
-              <Button variant="secondary" size="sm" onClick={loadMore} disabled={loadingMore}>
-                {loadingMore ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
+            <div className="flex flex-col items-center gap-2 pt-1">
+              <Button variant="outline" onClick={loadMore} loading={loadingMore}>
+                {!loadingMore && <ChevronDown />}
                 Load more
               </Button>
-              <p className="text-xs text-muted-foreground">
+              <p className="tnum text-xs text-muted-foreground">
                 Showing {transactions.length} of {totals?.matched.toLocaleString("en-IN")}
               </p>
             </div>
@@ -367,6 +366,6 @@ export default function Transactions() {
           onClose={() => navigate("/money/transactions", { replace: true })}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

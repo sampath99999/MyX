@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { ArrowRight, Compass } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import PublicHeader, { PUBLIC_HEADER_OFFSET } from "@/components/PublicHeader";
+import { cn } from "@/lib/utils";
 
 /*
   A real 404 screen. The route used to redirect unknown paths to "/", which
@@ -23,36 +26,43 @@ export default function NotFound() {
   }, []);
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center px-6 text-center">
-      <Link to="/" className="flex items-center gap-2.5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary glow">
-          <Sparkles className="h-5 w-5 text-primary-foreground" />
-        </div>
-        <span className="text-xl font-bold tracking-tight">MyX</span>
-      </Link>
+    <div className={cn("grain relative min-h-dvh overflow-hidden", PUBLIC_HEADER_OFFSET)}>
+      <PublicHeader calculators={false} />
 
-      <p className="mt-12 text-sm font-semibold uppercase tracking-widest text-primary">404</p>
-      <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-        That page does not exist.
-      </h1>
-      <p className="mt-4 max-w-md text-muted-foreground">
-        The link may be out of date, or the page may have moved.
-      </p>
-
-      <div className="mt-10 flex flex-wrap justify-center gap-3">
-        <Link
-          to="/"
-          className="rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground glow"
-        >
-          Go home
-        </Link>
-        <Link
-          to="/dashboard"
-          className="rounded-xl border border-border/60 px-6 py-3 font-medium transition-colors hover:bg-accent"
-        >
-          Open the app
-        </Link>
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div
+          className="aurora drift-b left-1/2 top-[-25%] size-[34rem] -translate-x-1/2"
+          style={{ background: "color-mix(in oklab, var(--brand) 70%, transparent)" }}
+        />
+        <div className="grid-bg absolute inset-0" />
       </div>
+
+      <main className="relative flex min-h-[calc(100dvh-4rem)] flex-col items-center justify-center px-5 py-12 text-center sm:px-6">
+        <span className="flex size-12 items-center justify-center rounded-2xl border border-border bg-card">
+          <Compass className="size-5 text-muted-foreground" />
+        </span>
+
+        <p className="eyebrow mt-7">Error 404</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+          That page does not exist.
+        </h1>
+        <p className="mt-4 max-w-md text-muted-foreground">
+          The link may be out of date, or the page may have moved. Everything MyX can do is one of
+          these two doors.
+        </p>
+
+        <div className="mt-9 flex flex-col gap-2 sm:flex-row">
+          <Button size="lg" asChild>
+            <Link to="/dashboard">
+              Open the app
+              <ArrowRight />
+            </Link>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
+            <Link to="/">Back to the home page</Link>
+          </Button>
+        </div>
+      </main>
     </div>
   );
 }

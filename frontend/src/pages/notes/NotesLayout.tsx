@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { LogOut, StickyNote, Pin, Trash2, Folder as FolderIcon, Plus, Loader2, Hash } from "lucide-react";
-import { useAuth } from "@/lib/auth";
+import { StickyNote, Pin, Trash2, Folder as FolderIcon, Plus, Loader2, Hash } from "lucide-react";
 import { api, type Folder } from "@/lib/api";
 import NewFolderDialog from "@/components/notes/NewFolderDialog";
 import type { NotesContextValue, NotesView } from "./context";
 import { cn } from "@/lib/utils";
 
 export default function NotesLayout() {
-  const { logout } = useAuth();
   const navigate = useNavigate();
 
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -134,21 +132,30 @@ export default function NotesLayout() {
 
       <div className="flex-1 min-w-0">
         {/* Mobile top bar */}
-        <div className="flex items-center justify-between gap-2 border-b border-border/50 glass px-4 py-3 md:hidden">
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            {views.map((v) => (
-              <button
-                key={v.key}
-                onClick={() => selectView(v.key)}
-                className={cn("shrink-0 rounded-lg border px-2.5 py-1.5 text-sm", v.active ? "border-primary/40 bg-primary/15" : "border-border text-muted-foreground")}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-          <button onClick={logout} className="shrink-0 text-muted-foreground" title="Sign out">
-            <LogOut className="h-5 w-5" />
-          </button>
+        {/*
+          The mobile view switcher.
+
+          It used to end in a 20x20 sign-out icon — a leftover from before the
+          shell had an account menu. Signing out of the whole app from the
+          corner of the Notes screen was both a surprising place to keep it and
+          the smallest target in the module; it lives in the account menu, which
+          every screen now reaches from the drawer.
+        */}
+        <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border/50 glass px-4 py-2.5 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {views.map((v) => (
+            <button
+              key={v.key}
+              onClick={() => selectView(v.key)}
+              className={cn(
+                "flex h-9 shrink-0 items-center rounded-lg border px-3.5 text-[0.8125rem] font-medium transition-colors",
+                v.active
+                  ? "border-transparent bg-foreground text-background"
+                  : "border-border text-muted-foreground",
+              )}
+            >
+              {v.label}
+            </button>
+          ))}
         </div>
 
         {!ready ? (

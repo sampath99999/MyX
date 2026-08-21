@@ -95,6 +95,12 @@ export interface AuthResponse {
   user: User;
   /** True when this sign-in cancelled a pending account deletion. */
   restored?: boolean;
+  /**
+   * True when the server locks unverified accounts out of their own data
+   * (REQUIRE_VERIFIED_EMAIL). It decides whether the code step is a wall or a
+   * nudge, and only the server knows which.
+   */
+  verification_required?: boolean;
 }
 
 /**
@@ -188,7 +194,11 @@ export const api = {
    * never signed out despite the short TTL.
    */
   me: async () => {
-    const res = await request<{ user: User; token?: string }>("/api/auth/me");
+    const res = await request<{
+      user: User;
+      token?: string;
+      verification_required?: boolean;
+    }>("/api/auth/me");
     if (res.token) setToken(res.token);
     return res;
   },
@@ -1155,9 +1165,35 @@ export interface MoneyDashboardData {
 
 /** Format a rupee amount for display, e.g. 48700.5 -> "₹48,700.50". */
 export function formatMoney(amount: number): string {
+  /*
+    Paise only when there are paise.
+
+    Every figure in the app used to end in ".00" — a balance of ₹7,02,893.00,
+    a bill of ₹649.00, a budget of ₹12,000.00 — and in a column of them the
+    two zeroes are pure noise that pushes the digits that matter apart. Real
+    paise (a 649.50 bill) still print, because rounding someone's money in the
+    display is not a cosmetic decision.
+  */
+  const whole = Number.isInteger(amount);
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
+    minimumFractionDigits: whole ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+/**
+ * Compact form for chart axes and tight tiles: ₹7.02L, ₹1.2Cr, ₹45K.
+ *
+ * Indian grouping, not the Intl "compact" notation, which renders 702893 as
+ * "₹703K" — a unit nobody in the app's audience reads amounts in.
+ */
+export function formatMoneyShort(amount: number): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  if (abs >= 1_00_00_000) return `${sign}₹${(abs / 1_00_00_000).toFixed(2).replace(/\.00$/, "")}Cr`;
+  if (abs >= 1_00_000) return `${sign}₹${(abs / 1_00_000).toFixed(2).replace(/\.00$/, "")}L`;
+  if (abs >= 1_000) return `${sign}₹${(abs / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return `${sign}₹${Math.round(abs)}`;
 }

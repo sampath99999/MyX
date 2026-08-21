@@ -1,7 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Check, Eye, EyeOff, KeyRound } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import AuthScreen, { AuthError } from "@/components/auth/AuthScreen";
 import { api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -12,6 +17,28 @@ const MIN_PASSWORD_LENGTH = 8;
   no token here, because a reset is a strong hint the account was in trouble and
   whoever finishes the flow should have to prove they know the new password.
 */
+
+/*
+  A deliberately crude strength read: length first, then whether the character
+  set is varied. It is not an entropy estimate and it is not a policy — the only
+  rule enforced is the eight-character minimum the server also checks. It exists
+  because "at least 8 characters" alone quietly encourages exactly 8, and a bar
+  that keeps moving is a better argument for a longer one than a sentence is.
+*/
+function strengthOf(password: string) {
+  if (!password) return { score: 0, label: "" };
+  let score = 0;
+  if (password.length >= MIN_PASSWORD_LENGTH) score += 1;
+  if (password.length >= 12) score += 1;
+  if (password.length >= 16) score += 1;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^\w\s]/].filter((re) => re.test(password)).length;
+  if (classes >= 3 && password.length >= MIN_PASSWORD_LENGTH) score += 1;
+  return {
+    score: Math.min(score, 4),
+    label: ["Too short", "Weak", "Fair", "Good", "Strong"][Math.min(score, 4)],
+  };
+}
+
 export default function ResetPassword() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -19,8 +46,15 @@ export default function ResetPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Checked as you type rather than only on submit — being told your two
+  // passwords disagree after pressing the button is the slowest way to find out.
+  const mismatch = confirm.length > 0 && password !== confirm;
+  const matched = confirm.length > 0 && password === confirm;
+  const strength = strengthOf(password);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -40,84 +74,129 @@ export default function ResetPassword() {
     }
   }
 
+  if (!token) {
+    return (
+      <AuthScreen
+        eyebrow="Account recovery"
+        title="This link is incomplete."
+        description="Reset links expire after 30 minutes and work only once. Request a fresh one and it will arrive in a moment."
+        footer={
+          <Link
+            to="/login"
+            className="tap transition-colors hover:text-foreground"
+          >
+            Back to sign in
+          </Link>
+        }
+      >
+        <Button className="w-full" size="xl" asChild>
+          <Link to="/forgot">Send a new link</Link>
+        </Button>
+      </AuthScreen>
+    );
+  }
+
   return (
-    <div className="flex min-h-dvh items-center justify-center px-6">
-      <div className="w-full max-w-sm animate-in-up">
-        <Link to="/" className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary glow">
-            <Sparkles className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold tracking-tight">MyX</span>
+    <AuthScreen
+      eyebrow="Account recovery"
+      title="Choose a new password."
+      description={`At least ${MIN_PASSWORD_LENGTH} characters. Saving it signs you out everywhere else, so anyone who had your old password is out.`}
+      footer={
+        <Link to="/login" className="tap transition-colors hover:text-foreground">
+          Back to sign in
         </Link>
-
-        <h1 className="mt-10 text-2xl font-bold tracking-tight">Choose a new password</h1>
-
-        {token ? (
-          <>
-            <p className="mt-2 text-sm text-muted-foreground">
-              At least {MIN_PASSWORD_LENGTH} characters. This also signs you out everywhere else.
-            </p>
-
-            <form onSubmit={onSubmit} className="mt-8 space-y-4">
-              <div>
-                <label htmlFor="password" className="text-sm font-medium">
-                  New password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  minLength={MIN_PASSWORD_LENGTH}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="mt-1.5 w-full rounded-lg border border-input bg-transparent px-3 py-2.5 outline-none focus:border-ring"
-                />
-              </div>
-              <div>
-                <label htmlFor="confirm" className="text-sm font-medium">
-                  Confirm password
-                </label>
-                <input
-                  id="confirm"
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  placeholder="••••••••"
-                  className="mt-1.5 w-full rounded-lg border border-input bg-transparent px-3 py-2.5 outline-none focus:border-ring"
-                />
-              </div>
-
-              {error && <p className="text-sm text-destructive">{error}</p>}
-
-              <button
-                type="submit"
-                disabled={busy}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground glow disabled:opacity-60"
-              >
-                {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-                Save new password
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <p className="mt-3 leading-relaxed text-muted-foreground">
-              This link is missing its token. Reset links expire after 30 minutes and work once —
-              request a fresh one.
-            </p>
-            <Link
-              to="/forgot"
-              className="mt-8 inline-block rounded-xl bg-primary px-5 py-2.5 font-semibold text-primary-foreground glow"
+      }
+    >
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="password">New password</Label>
+          <div className="relative">
+            <Input
+              id="password"
+              type={show ? "text" : "password"}
+              required
+              autoFocus
+              minLength={MIN_PASSWORD_LENGTH}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="h-11 pr-11"
+            />
+            <button
+              type="button"
+              onClick={() => setShow((v) => !v)}
+              aria-label={show ? "Hide password" : "Show password"}
+              className="tap absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
             >
-              Send a new link
-            </Link>
-          </>
-        )}
-      </div>
-    </div>
+              {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+
+          {password.length > 0 && (
+            <div className="flex items-center gap-2 pt-1">
+              <div className="flex flex-1 gap-1" aria-hidden>
+                {[1, 2, 3, 4].map((step) => (
+                  <span
+                    key={step}
+                    className={cn(
+                      "h-1 flex-1 rounded-full transition-colors",
+                      strength.score >= step
+                        ? strength.score <= 1
+                          ? "bg-destructive/70"
+                          : strength.score === 2
+                            ? "bg-amber-400/80"
+                            : "bg-emerald-400"
+                        : "bg-foreground/10",
+                    )}
+                  />
+                ))}
+              </div>
+              <span className="w-14 text-right text-xs text-muted-foreground">
+                {strength.label}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="confirm">Confirm password</Label>
+          <div className="relative">
+            <Input
+              id="confirm"
+              type={show ? "text" : "password"}
+              required
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="••••••••"
+              aria-invalid={mismatch || undefined}
+              className="h-11 pr-11"
+            />
+            {matched && (
+              <Check className="absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-emerald-400" />
+            )}
+          </div>
+          {mismatch && <p className="text-xs text-destructive">These do not match yet.</p>}
+        </div>
+
+        {error && <AuthError>{error}</AuthError>}
+
+        <Button
+          type="submit"
+          size="xl"
+          className="w-full"
+          loading={busy}
+          disabled={mismatch || password.length < MIN_PASSWORD_LENGTH}
+        >
+          {!busy && (
+            <>
+              <KeyRound />
+              Save new password
+            </>
+          )}
+        </Button>
+      </form>
+    </AuthScreen>
   );
 }

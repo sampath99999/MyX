@@ -1,7 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Sparkles, ArrowRight, ChevronDown } from "lucide-react";
+import { ArrowRight, ChevronDown, ShieldCheck, Calculator, TableProperties } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Segmented } from "@/components/ui/tabs";
+import NumberField from "@/components/calculators/NumberField";
+import PublicHeader, { PUBLIC_HEADER_OFFSET } from "@/components/PublicHeader";
+import PublicFooter from "@/components/PublicFooter";
+import Faq from "@/components/landing/Faq";
+import { Reveal } from "@/components/landing/motion";
 import { calculateLoan, formatRupees, formatTenure } from "@/lib/emi";
+import { cn } from "@/lib/utils";
 
 /*
   Public EMI calculator — no account, no gate, indexable.
@@ -13,13 +22,20 @@ import { calculateLoan, formatRupees, formatTenure } from "@/lib/emi";
 
   Everything computes in the browser. No request leaves the page, which is worth
   saying out loud on a page where people type what they owe.
+
+  Nothing here may import a charting library. This page is eagerly imported (it
+  is prerendered), so anything it pulls in is paid for by every visitor to every
+  route — the split chart below is hand-drawn SVG for exactly that reason.
 */
 
-const PRESETS = [
-  { label: "Home loan", principal: 2_500_000, rate: 8.75, months: 240 },
-  { label: "Car loan", principal: 800_000, rate: 9.5, months: 60 },
-  { label: "Personal loan", principal: 300_000, rate: 13.5, months: 36 },
-];
+type PresetKey = "home" | "car" | "personal";
+
+const PRESETS: { key: PresetKey; label: string; principal: number; rate: number; months: number }[] =
+  [
+    { key: "home", label: "Home loan", principal: 2_500_000, rate: 8.75, months: 240 },
+    { key: "car", label: "Car loan", principal: 800_000, rate: 9.5, months: 60 },
+    { key: "personal", label: "Personal loan", principal: 300_000, rate: 13.5, months: 36 },
+  ];
 
 const FAQS = [
   {
@@ -44,57 +60,116 @@ const FAQS = [
   },
 ];
 
-function Field({
-  label,
-  suffix,
-  value,
-  min,
-  max,
-  step,
-  onChange,
+/* ---------------------------------------------------------------- chart */
+
+/**
+ * How each EMI splits, month by month.
+ *
+ * The EMI is constant, so the bar height is constant and the only thing moving
+ * is the line between principal (below) and interest (above). That makes the
+ * crossover — the month the loan finally starts clearing faster than it accrues
+ * — a shape rather than a sentence, which is the single most surprising fact
+ * about a long loan.
+ *
+ * Drawn by hand rather than with Recharts: see the note at the top of the file.
+ */
+function SplitChart({
+  schedule,
+  crossover,
 }: {
-  label: string;
-  suffix: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (n: number) => void;
+  schedule: { month: number; interest: number; principal: number }[];
+  crossover: number | null;
 }) {
+  const path = useMemo(() => {
+    if (schedule.length < 2) return null;
+    // 360 months is a lot of path nodes for a 100-unit-wide SVG; sampling keeps
+    // the markup small without changing the shape.
+    const step = Math.max(1, Math.floor(schedule.length / 120));
+    const points = schedule.filter((_, i) => i % step === 0 || i === schedule.length - 1);
+    const w = 100;
+    const h = 40;
+    const dx = w / (points.length - 1);
+    const coords = points.map((r, i) => {
+      const total = r.principal + r.interest;
+      const share = total > 0 ? r.principal / total : 0;
+      // y is the top of the principal band, measured from the bottom.
+      return [i * dx, h - share * h] as const;
+    });
+    const line = coords
+      .map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`)
+      .join(" ");
+    /*
+      Both bands are explicit fills rather than one painted over a coloured
+      background. With a background doing half the work the two swapped visual
+      weight between themes — principal went dark on white and light on black,
+      while the amber washed out to beige — so the same chart told a different
+      story depending on the theme.
+    */
+    return {
+      principal: `${line} L${w} ${h} L0 ${h} Z`,
+      interest: `${line} L${w} 0 L0 0 Z`,
+      line,
+    };
+  }, [schedule]);
+
+  if (!path) return null;
+
+  const crossoverX =
+    crossover && schedule.length > 1 ? ((crossover - 1) / (schedule.length - 1)) * 100 : null;
+
   return (
     <div>
-      <div className="flex items-baseline justify-between">
-        <label className="text-sm font-medium">{label}</label>
-        <span className="text-xs text-muted-foreground">{suffix}</span>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-semibold">Where each instalment goes</h3>
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="size-2 rounded-sm bg-foreground/12 ring-1 ring-inset ring-border" /> Principal
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-2 rounded-sm bg-foreground/75" /> Interest
+          </span>
+        </div>
       </div>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="tnum mt-1.5 w-full rounded-lg border border-input bg-transparent px-3 py-2.5 text-lg font-semibold outline-none focus:border-ring"
-      />
-      <input
-        type="range"
-        value={Math.min(Math.max(value, min), max)}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
-        aria-label={`${label} slider`}
-        className="mt-3 w-full accent-primary"
-      />
+
+      <div className="relative mt-3 overflow-hidden rounded-lg border border-border">
+        <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="block h-28 w-full">
+          <path d={path.interest} className="fill-foreground/75" />
+          <path d={path.principal} className="fill-foreground/12" />
+          <path
+            d={path.line}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+            className="text-background/50"
+          />
+        </svg>
+        {crossoverX != null && crossoverX > 2 && crossoverX < 98 && (
+          <div
+            className="pointer-events-none absolute inset-y-0 w-px bg-foreground/40"
+            style={{ left: `${crossoverX}%` }}
+            aria-hidden
+          />
+        )}
+      </div>
+
+      <div className="tnum mt-2 flex justify-between text-[11px] text-muted-foreground">
+        <span>Month 1</span>
+        {crossover && crossover > 1 && <span>Crossover · month {crossover}</span>}
+        <span>Month {schedule.length}</span>
+      </div>
     </div>
   );
 }
+
+/* ---------------------------------------------------------------- page */
 
 export default function EmiCalculator() {
   const [principal, setPrincipal] = useState(2_500_000);
   const [rate, setRate] = useState(8.75);
   const [months, setMonths] = useState(240);
   const [showAll, setShowAll] = useState(false);
+  const [preset, setPreset] = useState<PresetKey>("home");
 
   const result = useMemo(
     () => calculateLoan(principal, rate, months),
@@ -114,168 +189,233 @@ export default function EmiCalculator() {
 
   const rows = showAll ? result.schedule : result.schedule.slice(0, 12);
 
+  function applyPreset(key: PresetKey) {
+    const p = PRESETS.find((x) => x.key === key);
+    if (!p) return;
+    setPreset(key);
+    setPrincipal(p.principal);
+    setRate(p.rate);
+    setMonths(p.months);
+    setShowAll(false);
+  }
+
   return (
     <div className="min-h-dvh">
-      <header className="border-b border-border/40">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3.5">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary glow">
-              <Sparkles className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold tracking-tight">MyX</span>
-          </Link>
-          <Link
-            to="/login?mode=register"
-            className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90"
-          >
-            Track this loan free
-          </Link>
-        </div>
-      </header>
+      <PublicHeader />
 
-      <main className="mx-auto max-w-5xl px-6 py-12">
-        <h1 className="max-w-3xl text-3xl font-extrabold tracking-tight sm:text-5xl">
-          EMI calculator with the full repayment schedule
-        </h1>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-          Work out the EMI on a home, car or personal loan — and see every month of it. Interest is
-          calculated on the reducing balance to the paise, the same way your bank does it. Nothing
-          you type leaves your browser.
-        </p>
-
-        <div className="mt-8 flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
-            <button
-              key={p.label}
-              onClick={() => {
-                setPrincipal(p.principal);
-                setRate(p.rate);
-                setMonths(p.months);
-              }}
-              className="rounded-lg border border-border/60 px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-            >
-              {p.label}
-            </button>
-          ))}
+      {/* ---------------- Hero ---------------- */}
+      <section className={cn("grain relative overflow-hidden", PUBLIC_HEADER_OFFSET)}>
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div
+            className="aurora drift-a left-[-8%] top-[-40%] size-[34rem]"
+            style={{ background: "color-mix(in oklab, var(--brand) 75%, transparent)" }}
+          />
+          <div
+            className="aurora drift-b right-[-12%] top-[-30%] size-[30rem]"
+            style={{ background: "oklch(0.62 0.16 220)" }}
+          />
+          <div className="grid-bg absolute inset-0" />
         </div>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_1.15fr]">
-          <section className="space-y-6 rounded-2xl border border-border/50 p-6">
-            <Field
-              label="Loan amount"
-              suffix="₹"
-              value={principal}
-              min={10_000}
-              max={50_000_000}
-              step={10_000}
-              onChange={setPrincipal}
-            />
-            <Field
-              label="Interest rate"
-              suffix="% per year"
-              value={rate}
-              min={0}
-              max={30}
-              step={0.05}
-              onChange={setRate}
-            />
-            <Field
-              label="Tenure"
-              suffix={`months · ${formatTenure(months)}`}
-              value={months}
-              min={1}
-              max={360}
-              step={1}
-              onChange={setMonths}
-            />
-          </section>
+        <div className="relative mx-auto max-w-6xl px-5 pb-10 pt-14 sm:px-6 sm:pt-20">
+          <p className="eyebrow">Free tool · No signup</p>
+          <h1 className="mt-4 max-w-3xl text-3xl font-semibold leading-[1.08] tracking-[-0.03em] sm:text-5xl">
+            EMI calculator with the full repayment schedule
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            Work out the EMI on a home, car or personal loan — and see every month of it. Interest
+            is calculated on the reducing balance to the paise, the same way your bank does it.
+          </p>
+          <ul className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+            {[
+              { icon: Calculator, text: "Reducing balance, to the paise" },
+              { icon: TableProperties, text: "Every instalment, not just the total" },
+              { icon: ShieldCheck, text: "Nothing you type leaves your browser" },
+            ].map((t) => (
+              <li key={t.text} className="inline-flex items-center gap-1.5">
+                <t.icon className="size-3.5" />
+                {t.text}
+              </li>
+            ))}
+          </ul>
+        </div>
 
-          <section className="rounded-2xl border border-border/50 p-6">
+        {/*
+          The section clips the aurora, which drew a hard horizontal line across
+          the page exactly where the colour stopped — the same seam the header
+          used to make. This fades it into the page background instead.
+        */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-b from-transparent to-background"
+        />
+      </section>
+
+      <main className="mx-auto max-w-6xl px-5 pb-24 sm:px-6">
+        {/* ---------------- Calculator ---------------- */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]">
+          <div className="space-y-4">
+            <Segmented
+              className="w-full [&>button]:flex-1"
+              value={preset}
+              onChange={applyPreset}
+              options={PRESETS.map((p) => ({ value: p.key, label: p.label }))}
+            />
+            <Card className="space-y-6 p-5">
+              <NumberField
+                id="loan-amount"
+                label="Loan amount"
+                suffix="₹"
+                value={principal}
+                min={10_000}
+                max={50_000_000}
+                step={10_000}
+                onChange={setPrincipal}
+              />
+              <NumberField
+                id="interest-rate"
+                label="Interest rate"
+                suffix="% per year"
+                value={rate}
+                min={0}
+                max={30}
+                step={0.05}
+                onChange={setRate}
+              />
+              <NumberField
+                id="tenure"
+                label="Tenure"
+                suffix={`months · ${formatTenure(months)}`}
+                value={months}
+                min={1}
+                max={360}
+                step={1}
+                onChange={setMonths}
+              />
+            </Card>
+          </div>
+
+          <Card className="p-5 sm:p-6">
             {valid ? (
               <>
-                <div className="text-sm text-muted-foreground">Monthly EMI</div>
-                <div className="tnum text-4xl font-extrabold tracking-tight sm:text-5xl">
-                  {formatRupees(result.emi)}
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <p className="eyebrow">Monthly EMI</p>
+                    <p className="tnum mt-2 text-4xl font-semibold tracking-tight sm:text-5xl">
+                      {formatRupees(result.emi)}
+                    </p>
+                  </div>
+                  <Button asChild>
+                    <Link to="/login?mode=register">
+                      Track this loan free
+                      <ArrowRight />
+                    </Link>
+                  </Button>
                 </div>
 
-                <dl className="mt-8 space-y-4">
-                  <div className="flex items-baseline justify-between gap-4">
-                    <dt className="text-sm text-muted-foreground">Principal</dt>
-                    <dd className="tnum font-semibold">{formatRupees(principal * 100)}</dd>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-4">
-                    <dt className="text-sm text-muted-foreground">Total interest</dt>
-                    <dd className="tnum font-semibold text-amber-300">
-                      {formatRupees(result.totalInterest)}
-                    </dd>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-4 border-t border-border/50 pt-4">
-                    <dt className="text-sm text-muted-foreground">Total payable</dt>
-                    <dd className="tnum text-lg font-bold">{formatRupees(result.totalPayable)}</dd>
-                  </div>
+                <dl className="mt-7 grid grid-cols-1 divide-y divide-border rounded-lg border border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                  {[
+                    { term: "Principal", value: formatRupees(principal * 100), tone: "" },
+                    { term: "Total interest", value: formatRupees(result.totalInterest), tone: "" },
+                    { term: "Total payable", value: formatRupees(result.totalPayable), tone: "" },
+                  ].map((row) => (
+                    <div key={row.term} className="min-w-0 px-4 py-3">
+                      <dt className="truncate text-xs text-muted-foreground">{row.term}</dt>
+                      <dd className={cn("tnum mt-1 truncate text-lg font-semibold", row.tone)}>
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
                 </dl>
 
                 {/* Interest as a share of everything paid — the number that lands. */}
-                <div className="mt-8">
+                <div className="mt-6">
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Principal</span>
-                    <span>{interestShare}% of what you pay is interest</span>
+                    <span>What you actually pay</span>
+                    <span className="tnum">
+                      {interestShare}% of it is interest
+                    </span>
                   </div>
-                  <div className="mt-2 flex h-3 overflow-hidden rounded-full bg-muted">
+                  <div className="mt-2 flex h-2.5 overflow-hidden rounded-full border border-border">
                     <div
-                      className="bg-primary"
+                      className="bg-foreground/12"
                       style={{ width: `${100 - interestShare}%` }}
                       aria-hidden="true"
                     />
                     <div
-                      className="bg-amber-400/80"
+                      className="bg-foreground/75"
                       style={{ width: `${interestShare}%` }}
                       aria-hidden="true"
                     />
                   </div>
                 </div>
 
+                <div className="mt-7 border-t border-border pt-6">
+                  <SplitChart schedule={result.schedule} crossover={crossover} />
+                </div>
+
                 {crossover && crossover > 1 && (
-                  <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
-                    Until month <span className="text-foreground">{crossover}</span> more of each
-                    EMI goes to interest than to clearing the loan.
+                  <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
+                    Until month <span className="font-medium text-foreground">{crossover}</span>,
+                    more of every instalment goes to interest than to clearing the loan.
                   </p>
                 )}
               </>
             ) : (
-              <p className="text-muted-foreground">
-                At this rate the EMI would not cover even the first month's interest, so the balance
-                would never fall. Raise the tenure or lower the rate.
-              </p>
+              <div className="py-10 text-center">
+                <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
+                  At this rate the EMI would not cover even the first month's interest, so the
+                  balance would never fall. Raise the tenure or lower the rate.
+                </p>
+              </div>
             )}
-          </section>
+          </Card>
         </div>
 
+        {/* ---------------- Schedule ---------------- */}
         {valid && (
-          <section className="mt-12">
-            <h2 className="text-2xl font-bold tracking-tight">Repayment schedule</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+          <Reveal className="mt-14">
+            <h2 className="text-2xl font-semibold tracking-tight">Repayment schedule</h2>
+            <p className="tnum mt-2 text-sm text-muted-foreground">
               {result.months} instalments. The final one is trimmed to whatever is left.
             </p>
 
-            <div className="mt-6 overflow-x-auto rounded-2xl border border-border/50">
+            <div className="mt-5 overflow-x-auto rounded-xl border border-border">
               <table className="w-full min-w-[34rem] text-sm">
                 <thead>
-                  <tr className="border-b border-border/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="px-4 py-3 font-medium">Month</th>
-                    <th className="px-4 py-3 text-right font-medium">Interest</th>
-                    <th className="px-4 py-3 text-right font-medium">Principal</th>
-                    <th className="px-4 py-3 text-right font-medium">Balance</th>
+                  <tr className="border-b border-border bg-secondary/40 text-left">
+                    <th className="px-4 py-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Month
+                    </th>
+                    <th className="px-4 py-2.5 text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Interest
+                    </th>
+                    <th className="px-4 py-2.5 text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Principal
+                    </th>
+                    <th className="px-4 py-2.5 text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Balance
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.month} className="border-b border-border/30 last:border-0">
-                      <td className="px-4 py-2.5 text-muted-foreground">{row.month}</td>
-                      <td className="tnum px-4 py-2.5 text-right text-amber-300/90">
+                    <tr
+                      key={row.month}
+                      className={cn(
+                        "border-b border-border last:border-0 transition-colors hover:bg-accent/40",
+                        // The crossover row is the one worth finding in a wall
+                        // of 240 numbers.
+                        crossover === row.month && "bg-accent/50",
+                      )}
+                    >
+                      <td className="tnum px-4 py-2.5 text-muted-foreground">{row.month}</td>
+                      <td className="tnum px-4 py-2.5 text-right text-muted-foreground">
                         {formatRupees(row.interest)}
                       </td>
-                      <td className="tnum px-4 py-2.5 text-right">{formatRupees(row.principal)}</td>
+                      <td className="tnum px-4 py-2.5 text-right font-medium">
+                        {formatRupees(row.principal)}
+                      </td>
                       <td className="tnum px-4 py-2.5 text-right text-muted-foreground">
                         {formatRupees(row.balance)}
                       </td>
@@ -286,64 +426,53 @@ export default function EmiCalculator() {
             </div>
 
             {result.schedule.length > 12 && (
-              <button
-                onClick={() => setShowAll((v) => !v)}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-4 py-2 text-sm font-medium transition-colors hover:bg-accent"
-              >
+              <Button variant="outline" className="mt-4" onClick={() => setShowAll((v) => !v)}>
                 {showAll ? "Show first 12 months" : `Show all ${result.months} months`}
-                <ChevronDown className={`h-4 w-4 ${showAll ? "rotate-180" : ""}`} />
-              </button>
+                <ChevronDown className={cn("transition-transform", showAll && "rotate-180")} />
+              </Button>
             )}
-          </section>
+          </Reveal>
         )}
 
-        <section className="mt-16 rounded-2xl border border-primary/25 bg-primary/5 p-8 sm:p-10">
-          <h2 className="text-2xl font-bold tracking-tight">
-            A calculator tells you the plan. MyX tells you where you are.
-          </h2>
-          <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">
-            Track the loan for real: log each EMI as you pay it, watch the outstanding balance fall,
-            handle a floating-rate change mid-tenure, and see what a prepayment actually saves —
-            alongside your budgets, bills and everything else.
-          </p>
-          <Link
-            to="/login?mode=register"
-            className="mt-7 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3.5 font-semibold text-primary-foreground glow transition-transform hover:-translate-y-0.5"
-          >
-            Start tracking free
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </section>
+        {/* ---------------- CTA ---------------- */}
+        <Reveal className="mt-16">
+          <div className="grain relative overflow-hidden rounded-2xl border border-border px-6 py-12 sm:px-10">
+            <div aria-hidden className="pointer-events-none absolute inset-0">
+              <div
+                className="aurora drift-c left-1/2 top-[-45%] size-[30rem] -translate-x-1/2"
+                style={{ background: "color-mix(in oklab, var(--brand) 60%, transparent)" }}
+              />
+              <div className="grid-bg absolute inset-0" />
+            </div>
+            <div className="relative">
+              <h2 className="max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">
+                A calculator tells you the plan. MyX tells you where you are.
+              </h2>
+              <p className="mt-4 max-w-2xl leading-relaxed text-muted-foreground">
+                Track the loan for real: log each EMI as you pay it, watch the outstanding balance
+                fall, handle a floating-rate change mid-tenure, and see what a prepayment actually
+                saves — alongside your budgets, bills and everything else.
+              </p>
+              <Button size="xl" className="mt-8" asChild>
+                <Link to="/login?mode=register">
+                  Start tracking free
+                  <ArrowRight />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </Reveal>
 
-        <section className="mt-16">
-          <h2 className="text-2xl font-bold tracking-tight">Common questions</h2>
-          <dl className="mt-6 divide-y divide-border/50 border-y border-border/50">
-            {FAQS.map((f) => (
-              <div key={f.q} className="py-5">
-                <dt className="font-semibold">{f.q}</dt>
-                <dd className="mt-2 leading-relaxed text-muted-foreground">{f.a}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
+        {/* ---------------- FAQ ---------------- */}
+        <Reveal className="mt-16">
+          <h2 className="text-2xl font-semibold tracking-tight">Common questions</h2>
+          <div className="mt-6">
+            <Faq items={FAQS} />
+          </div>
+        </Reveal>
       </main>
 
-      <footer className="border-t border-border/40">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-muted-foreground">
-          <span>© {new Date().getFullYear()} MyX</span>
-          <div className="flex flex-wrap gap-6">
-            <Link to="/" className="hover:text-foreground">
-              Home
-            </Link>
-            <Link to="/privacy" className="hover:text-foreground">
-              Privacy
-            </Link>
-            <Link to="/terms" className="hover:text-foreground">
-              Terms
-            </Link>
-          </div>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 }

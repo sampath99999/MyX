@@ -148,12 +148,20 @@ export default function AddTransactionDialog({
             })}
           </div>
 
-          {/* Hero amount input */}
-          <div className="rounded-2xl border border-border/60 bg-background/40 px-4 py-6 text-center">
+          {/*
+            Hero amount input.
+
+            It was text-5xl and py-6 at every width. On a 375px phone that is a
+            48px figure in a 100px-tall box, inside a sheet that also has to fit
+            a type switch, a category picker, a date, a note and a submit — and
+            the amount is the one field that is never long. Scaled down below
+            sm; unchanged on a desktop, where the room exists.
+          */}
+          <div className="rounded-2xl border border-border/60 bg-background/40 px-4 py-4 text-center sm:py-6">
             <div className="flex items-center justify-center gap-1">
               <span
                 className={cn(
-                  "text-3xl font-semibold transition-colors",
+                  "text-2xl font-semibold transition-colors sm:text-3xl",
                   value > 0 ? (isIncome ? "text-emerald-400" : "text-foreground") : "text-muted-foreground/50",
                 )}
               >
@@ -168,7 +176,7 @@ export default function AddTransactionDialog({
                 autoFocus
                 aria-label="Amount"
                 className={cn(
-                  "w-full max-w-[15rem] bg-transparent text-center text-5xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/30",
+                  "w-full max-w-[15rem] bg-transparent text-center text-4xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/30 sm:text-5xl",
                   isIncome && value > 0 && "text-emerald-400",
                 )}
               />

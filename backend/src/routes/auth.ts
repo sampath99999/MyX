@@ -138,6 +138,7 @@ auth.post("/register", async (c) => {
   return c.json(
     {
       token,
+      verification_required: verificationRequired(c.env),
       user: {
         id: inserted.id,
         email: inserted.email,
@@ -148,6 +149,20 @@ auth.post("/register", async (c) => {
     201,
   );
 });
+
+/*
+  Whether an unverified account is locked out of its own data.
+
+  The gate itself lives in middleware.ts, which answers 403 on every data route
+  when REQUIRE_VERIFIED_EMAIL is on. The client cannot infer that from a flag it
+  does not have, and guessing wrong is expensive in both directions: guess
+  "optional" and someone is dropped onto a dashboard where every panel fails,
+  guess "required" and a deployment that meant verification as a nudge turns
+  into a wall. So the server states it, on every response that carries a session.
+*/
+function verificationRequired(env: AppBindings["Bindings"]): boolean {
+  return env.REQUIRE_VERIFIED_EMAIL === "true";
+}
 
 /** POST /api/auth/login — verify credentials, returns a JWT. */
 auth.post("/login", async (c) => {
@@ -231,6 +246,7 @@ auth.post("/login", async (c) => {
   return c.json({
     token,
     restored,
+    verification_required: verificationRequired(c.env),
     user: {
       id: user.id,
       email: user.email,
@@ -265,6 +281,7 @@ auth.get("/me", requireAuth, async (c) => {
   if (!user) throw new HTTPException(404, { message: "User not found" });
 
   const body: Record<string, unknown> = {
+    verification_required: verificationRequired(c.env),
     user: {
       id: user.id,
       email: user.email,

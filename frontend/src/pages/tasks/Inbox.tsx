@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Inbox as InboxIcon, Loader2 } from "lucide-react";
+import { Inbox as InboxIcon } from "lucide-react";
 import QuickAddTask from "@/components/tasks/QuickAddTask";
 import TaskItem from "@/components/tasks/TaskItem";
+import { Card } from "@/components/ui/card";
+import { PageShell, PageHeader, EmptyState } from "@/components/ui/page";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { api, type Task } from "@/lib/api";
 import { useTasksContext } from "./context";
 
@@ -37,19 +40,15 @@ export default function Inbox() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl p-6 lg:p-8 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/15 text-sky-400">
-          <InboxIcon className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Inbox</h1>
-          <p className="text-xs text-muted-foreground">
-            Unsorted tasks{" "}
-            {ctx.currentSpace ? `· ${ctx.currentSpace.icon} ${ctx.currentSpace.name}` : "· All spaces"}
-          </p>
-        </div>
-      </div>
+    <PageShell width="narrow" className="space-y-5">
+      <PageHeader
+        title="Inbox"
+        description={
+          ctx.currentSpace
+            ? `Unsorted in ${ctx.currentSpace.icon} ${ctx.currentSpace.name}`
+            : "Anything captured without a project or a date"
+        }
+      />
 
       <QuickAddTask
         spaceId={targetSpace}
@@ -61,18 +60,15 @@ export default function Inbox() {
       />
 
       {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
+        <SkeletonRows count={4} />
       ) : tasks.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center">
-          <div className="text-3xl">📥</div>
-          <p className="text-sm text-muted-foreground">
-            Inbox zero. Capture quick thoughts here, sort them into projects later.
-          </p>
-        </div>
+        <EmptyState
+          icon={InboxIcon}
+          title="Inbox zero"
+          description="This is the place to dump a thought without deciding where it belongs. Sort it into a project — or give it a date — later."
+        />
       ) : (
-        <div className="flex flex-col">
+        <Card className="overflow-hidden">
           {tasks.map((t) => (
             <TaskItem
               key={t.id}
@@ -83,8 +79,8 @@ export default function Inbox() {
               onLabelsChanged={ctx.reloadAll}
             />
           ))}
-        </div>
+        </Card>
       )}
-    </div>
+    </PageShell>
   );
 }

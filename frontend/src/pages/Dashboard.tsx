@@ -1,23 +1,35 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
-  Sparkles,
   Wallet,
   CheckCircle2,
   ListChecks,
   ArrowDownLeft,
   ArrowUpRight,
-  Bell,
   CalendarClock,
-  Check,
   ArrowRight,
   RotateCcw,
+  PiggyBank,
+  Receipt,
+  StickyNote,
+  Brain,
+  Plus,
+  Sparkles,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Stat, Delta, Meter } from "@/components/ui/stat";
+import { PageShell, Section, EmptyState } from "@/components/ui/page";
+import { SkeletonStats, Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/switch";
+import AddTransactionDialog from "@/components/AddTransactionDialog";
 import LoadError from "@/components/LoadError";
 import { useAuth } from "@/lib/auth";
 import { api, formatMoney } from "@/lib/api";
-import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
+import { useAuthenticatedLoad, announceDataChanged } from "@/lib/useAuthenticatedLoad";
+import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 interface RecentTransaction {
   id: number;
@@ -40,10 +52,19 @@ interface Summary {
   stats: {
     balance: number;
     monthSpend: number;
+    monthIncome: number;
+    prevMonthSpend: number;
+    prevMonthIncome: number;
+    spendDelta: number | null;
+    incomeDelta: number | null;
+    savingsRate: number | null;
     openTasks: number;
+    overdueTasks: number;
     notes: number;
     checklists: number;
+    memories: number;
   };
+  spark: { day: string; amount: number }[];
   today: {
     tasks: { id: number; title: string; due_date: string; priority: number }[];
     bills: { id: number; name: string; amount: number; next_due: string }[];
@@ -63,9 +84,10 @@ function dueLabel(iso: string): string {
   if (iso < todayIso) return "overdue";
   if (iso === todayIso) return "today";
   const days = Math.round(
-    (new Date(`${iso}T00:00:00`).getTime() - new Date(`${todayIso}T00:00:00`).getTime()) / 86_400_000,
+    (new Date(`${iso}T00:00:00`).getTime() - new Date(`${todayIso}T00:00:00`).getTime()) /
+      86_400_000,
   );
-  return days === 1 ? "tomorrow" : `${days}d`;
+  return days === 1 ? "tomorrow" : `in ${days}d`;
 }
 
 /** "5 Aug" — enough to place a transaction without the noise of a full date. */
@@ -76,15 +98,66 @@ function shortDate(iso: string): string {
     : d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
+/*
+  A 14-day spend sparkline, drawn by hand.
+
+  Recharts is already a dependency, but it is 90 kB of it and this is fourteen
+  numbers — importing a charting library into the app's first screen to draw a
+  polyline is how a dashboard ends up taking two seconds to appear.
+*/
+function Sparkline({ points }: { points: { day: string; amount: number }[] }) {
+  const path = useMemo(() => {
+    if (points.length < 2) return null;
+    const max = Math.max(...points.map((p) => p.amount), 1);
+    const w = 100;
+    const h = 28;
+    const step = w / (points.length - 1);
+    const coords = points.map((p, i) => [i * step, h - (p.amount / max) * h] as const);
+    const line = coords.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+    const area = `${line} L${w} ${h} L0 ${h} Z`;
+    return { line, area };
+  }, [points]);
+
+  if (!path) return null;
+  return (
+    <svg
+      viewBox="0 0 100 28"
+      preserveAspectRatio="none"
+      className="mt-3 h-7 w-full text-muted-foreground/70"
+      aria-hidden
+    >
+      <path d={path.area} fill="currentColor" opacity="0.12" />
+      <path
+        d={path.line}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+/** The four module shortcuts under the fold. */
+const MODULES = [
+  { to: "/money/transactions", label: "Transactions", icon: Receipt, blurb: "Log and review spending" },
+  { to: "/tasks", label: "Tasks", icon: CheckCircle2, blurb: "Today, upcoming, projects" },
+  { to: "/notes", label: "Notes", icon: StickyNote, blurb: "Markdown, folders, search" },
+  { to: "/memories", label: "Memories", icon: Brain, blurb: "Things worth keeping" },
+];
+
 export default function Dashboard() {
   const { user } = useAuth();
+  const toast = useToast();
   // Set by the sign-in that cancelled a pending deletion (see pages/Login.tsx).
   const [params] = useSearchParams();
   const restored = params.get("restored") === "1";
   const [summary, setSummary] = useState<Summary | null>(null);
 
   const load = useCallback(async () => {
-    setSummary(await api.dashboardSummary());
+    setSummary((await api.dashboardSummary()) as Summary);
   }, []);
 
   const { error, reload } = useAuthenticatedLoad(load);
@@ -113,312 +186,438 @@ export default function Dashboard() {
     try {
       await api.updateChecklistItem(checklist.id, itemId, { done });
     } catch {
+      toast.error("Could not save that tick", "Reloading the checklist.");
       reload();
     }
   }
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
   const needsYou = (summary?.today.tasks.length ?? 0) + (summary?.today.bills.length ?? 0);
+  const s = summary?.stats;
 
-  const stats = [
-    {
-      label: "Current Balance",
-      value: summary ? formatMoney(summary.stats.balance) : "—",
-      icon: Wallet,
-      hint: "Across all accounts",
-      accent: "text-emerald-400",
-      to: "/money",
-    },
-    {
-      label: "Spent This Month",
-      value: summary ? formatMoney(summary.stats.monthSpend) : "—",
-      icon: ArrowDownLeft,
-      hint: "So far this month",
-      accent: "text-amber-400",
-      to: "/money",
-    },
-    {
-      label: "Open Tasks",
-      value: summary ? summary.stats.openTasks : "—",
-      icon: CheckCircle2,
-      hint: "Still to do",
-      accent: "text-sky-400",
-      to: "/tasks",
-    },
-    {
-      label: "Checklists",
-      value: summary ? summary.stats.checklists : "—",
-      icon: ListChecks,
-      hint: "Reusable routines",
-      accent: "text-violet-400",
-      to: "/checklists",
-    },
-  ];
+  const dueSoonTotal = (summary?.today.bills ?? []).reduce((sum, b) => sum + b.amount, 0);
 
   return (
-    <>
-      <div className="p-6 lg:p-8 space-y-8">
-        {/*
-          Signing in is what cancels a scheduled deletion, and it happens
-          server-side without ceremony — so this is the only place the user
-          finds out it worked. Worth a banner, not a toast: "did my data come
-          back?" is not a question to answer for two seconds and then hide.
-        */}
-        {restored && (
-          <Card className="glass flex items-start gap-3 border-emerald-500/30 p-4">
-            <RotateCcw className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
-            <div>
-              <p className="font-medium">Welcome back — your account is restored.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                The deletion was cancelled and nothing was lost. Everything is exactly where you
-                left it.
-              </p>
-            </div>
-          </Card>
-        )}
+    <PageShell className="space-y-7">
+      {/*
+        Signing in is what cancels a scheduled deletion, and it happens
+        server-side without ceremony — so this is the only place the user
+        finds out it worked. Worth a banner, not a toast: "did my data come
+        back?" is not a question to answer for two seconds and then hide.
+      */}
+      {restored && (
+        <Card className="flex items-start gap-3 border-emerald-400/30 bg-emerald-400/[0.06] p-4">
+          <RotateCcw className="mt-0.5 size-4 shrink-0 text-emerald-400" />
+          <div>
+            <p className="text-sm font-medium">Welcome back — your account is restored.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The deletion was cancelled and nothing was lost. Everything is exactly where you left
+              it.
+            </p>
+          </div>
+        </Card>
+      )}
 
-        {error && (
-          <Card className="glass p-4">
-            <LoadError message={error} onRetry={reload} />
-          </Card>
-        )}
+      {error && (
+        <Card className="p-4">
+          <LoadError message={error} onRetry={reload} />
+        </Card>
+      )}
 
-        {/*
-          The greeting is the page title now. A sticky bar reading "Dashboard"
-          above a screen that already said "Welcome back, Sampath" was labelling
-          the obvious and costing 60px of a phone screen to do it.
-        */}
-        <div className="animate-in-up">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {new Date().toLocaleDateString("en-US", {
+      {/*
+        The greeting is the page title. A sticky bar reading "Dashboard" above a
+        screen that already said "Welcome back, Aarav" was labelling the obvious
+        and costing 60px of a phone screen to do it.
+      */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="eyebrow">
+            {new Date().toLocaleDateString("en-IN", {
               weekday: "long",
-              month: "long",
               day: "numeric",
+              month: "long",
             })}
           </p>
-          <h2 className="mt-1 text-3xl font-bold tracking-tight">
-            {summary?.greeting ?? `Welcome back, ${firstName}`} 👋
-          </h2>
-          <p className="mt-1.5 text-muted-foreground">
-            {needsYou > 0
-              ? `${needsYou} thing${needsYou === 1 ? "" : "s"} need you, and here's where everything else stands.`
-              : "Nothing is due. Here's where everything stands."}
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+            {summary?.greeting ?? `Welcome back, ${firstName}`}
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            {!summary
+              ? "Pulling everything together…"
+              : needsYou > 0
+                ? `${needsYou} thing${needsYou === 1 ? "" : "s"} need${needsYou === 1 ? "s" : ""} you today.`
+                : "Nothing is due. Here is where everything stands."}
           </p>
         </div>
-
-        {/* Stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {stats.map((s, i) => {
-            const inner = (
-              <Card
-                className="glass p-5 h-full animate-in-up transition-transform duration-300 hover:-translate-y-1"
-                style={{ animationDelay: `${i * 60}ms` }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className={`rounded-lg bg-background/40 p-2 ${s.accent}`}>
-                    <s.icon className="h-5 w-5" />
-                  </div>
-                  {s.to && <ArrowRight className="h-4 w-4 text-muted-foreground/50" />}
-                </div>
-                <div className="mt-4 text-2xl font-bold tracking-tight">{s.value}</div>
-                <div className="mt-1 text-sm font-medium text-muted-foreground">{s.label}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground/70">{s.hint}</div>
-              </Card>
-            );
-            return s.to ? (
-              <Link key={s.label} to={s.to} className="block">
-                {inner}
-              </Link>
-            ) : (
-              <div key={s.label}>{inner}</div>
-            );
-          })}
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/money">
+              Open Money
+              <ArrowRight />
+            </Link>
+          </Button>
+          <AddTransactionDialog
+            onCreated={() => {
+              announceDataChanged();
+              reload();
+            }}
+            trigger={
+              <Button>
+                <Plus />
+                Add transaction
+              </Button>
+            }
+          />
         </div>
+      </div>
 
-        {/*
-          Needs you today. A dashboard that only totals things is a report —
-          this is the part that gives a reason to open it in the morning, and it
-          is the same set the daily digest emails.
-        */}
-        {needsYou > 0 && (
-          <Card className="glass p-6 animate-in-up">
-            <div className="flex items-center gap-2">
-              <Bell className="h-4 w-4 text-amber-300" />
-              <h3 className="font-semibold">
-                Needs you {summary!.today.tasks.length > 0 ? "today" : "this week"}
-              </h3>
-            </div>
+      {/* ---------- The four numbers ---------- */}
+      {!summary ? (
+        <SkeletonStats />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Stat
+            label="Current balance"
+            value={formatMoney(s!.balance)}
+            icon={Wallet}
+            to="/money"
+            sub={
+              <span>
+                {formatMoney(s!.monthIncome)} in this month
+              </span>
+            }
+          />
+          <Stat
+            label="Spent this month"
+            value={formatMoney(s!.monthSpend)}
+            icon={ArrowDownLeft}
+            to="/money/transactions"
+            sub={
+              s!.spendDelta == null ? (
+                "No previous month to compare"
+              ) : (
+                <span>
+                  <Delta value={s!.spendDelta} invert /> vs {formatMoney(s!.prevMonthSpend)} last
+                  month
+                </span>
+              )
+            }
+          >
+            <Sparkline points={summary.spark} />
+          </Stat>
+          <Stat
+            label="Saved this month"
+            value={s!.savingsRate == null ? "—" : `${Math.round(s!.savingsRate)}%`}
+            icon={PiggyBank}
+            tone={s!.savingsRate != null && s!.savingsRate < 0 ? "negative" : "default"}
+            sub={
+              s!.savingsRate == null
+                ? "Log income to see this"
+                : `${formatMoney(Math.max(0, s!.monthIncome - s!.monthSpend))} left of what came in`
+            }
+          >
+            {s!.savingsRate != null && (
+              <Meter
+                className="mt-3"
+                value={Math.max(0, s!.savingsRate) / 100}
+                tone={s!.savingsRate >= 20 ? "positive" : s!.savingsRate >= 0 ? "warning" : "danger"}
+              />
+            )}
+          </Stat>
+          <Stat
+            label="Open tasks"
+            value={s!.openTasks}
+            icon={CheckCircle2}
+            to="/tasks"
+            tone={s!.overdueTasks > 0 ? "negative" : "default"}
+            sub={
+              s!.overdueTasks > 0
+                ? `${s!.overdueTasks} overdue`
+                : `${s!.checklists} checklist${s!.checklists === 1 ? "" : "s"} · ${s!.notes} note${s!.notes === 1 ? "" : "s"}`
+            }
+          />
+        </div>
+      )}
 
-            <div className="mt-4 grid gap-x-8 gap-y-2 sm:grid-cols-2">
-              {summary!.today.bills.map((b) => (
-                <Link
-                  key={`bill-${b.id}`}
-                  to="/money/recurring"
-                  className="flex items-center gap-3 rounded-lg py-2 transition-colors hover:bg-accent/40"
-                >
-                  <CalendarClock
-                    className={`h-4 w-4 shrink-0 ${
-                      b.next_due < todayIso ? "text-rose-300" : "text-amber-300"
-                    }`}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm">{b.name}</span>
-                  <span className="shrink-0 text-sm font-semibold tabular-nums">
-                    {formatMoney(b.amount)}
-                  </span>
-                  <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
-                    {dueLabel(b.next_due)}
-                  </span>
-                </Link>
-              ))}
-
-              {summary!.today.tasks.map((t) => (
-                <Link
-                  key={`task-${t.id}`}
-                  to="/tasks"
-                  className="flex items-center gap-3 rounded-lg py-2 transition-colors hover:bg-accent/40"
-                >
-                  <CheckCircle2
-                    className={`h-4 w-4 shrink-0 ${
-                      t.due_date < todayIso ? "text-rose-300" : "text-sky-300"
-                    }`}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
-                  <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
-                    {dueLabel(t.due_date)}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Panels */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Card className="glass lg:col-span-2 p-6 min-h-56">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Recent activity</h3>
+      {/*
+        Needs you today. A dashboard that only totals things is a report — this
+        is the part that gives a reason to open it in the morning, and it is the
+        same set the daily digest emails.
+      */}
+      {summary && needsYou > 0 && (
+        <Section
+          title="Needs you today"
+          description={
+            dueSoonTotal > 0
+              ? `${formatMoney(dueSoonTotal)} of bills due inside a week`
+              : undefined
+          }
+        >
+          <Card className="divide-y divide-border overflow-hidden">
+            {summary.today.bills.map((b) => (
               <Link
-                to="/money/transactions"
-                className="text-xs text-primary hover:underline underline-offset-4"
+                key={`bill-${b.id}`}
+                to="/money/recurring"
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
               >
-                View money →
+                <span
+                  className={cn(
+                    "flex size-8 shrink-0 items-center justify-center rounded-lg",
+                    b.next_due < todayIso
+                      ? "bg-rose-400/10 text-rose-400"
+                      : "bg-amber-400/10 text-amber-400",
+                  )}
+                >
+                  <CalendarClock className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{b.name}</span>
+                <span className="tnum shrink-0 text-sm font-medium">{formatMoney(b.amount)}</span>
+                <Badge
+                  variant={b.next_due < todayIso ? "danger" : "warning"}
+                  className="w-20 shrink-0 justify-center"
+                >
+                  {dueLabel(b.next_due)}
+                </Badge>
               </Link>
-            </div>
-            {summary && summary.recent.length === 0 ? (
-              <div className="mt-8 flex flex-col items-center justify-center gap-3 py-8 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <Sparkles className="h-6 w-6 text-primary" />
+            ))}
+
+            {summary.today.tasks.map((t) => (
+              <Link
+                key={`task-${t.id}`}
+                to="/tasks"
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
+              >
+                <span
+                  className={cn(
+                    "flex size-8 shrink-0 items-center justify-center rounded-lg",
+                    t.due_date < todayIso
+                      ? "bg-rose-400/10 text-rose-400"
+                      : "bg-secondary text-muted-foreground",
+                  )}
+                >
+                  <CheckCircle2 className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.title}</span>
+                <Badge
+                  variant={t.due_date < todayIso ? "danger" : "outline"}
+                  className="w-20 shrink-0 justify-center"
+                >
+                  {dueLabel(t.due_date)}
+                </Badge>
+              </Link>
+            ))}
+          </Card>
+        </Section>
+      )}
+
+      {/* ---------- Recent activity + the first checklist ---------- */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Section
+          className="lg:col-span-2"
+          title="Recent activity"
+          actions={
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/money/transactions">
+                View all
+                <ArrowRight />
+              </Link>
+            </Button>
+          }
+        >
+          {!summary ? (
+            <Card className="divide-y divide-border">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 p-4">
+                  <Skeleton className="size-8 shrink-0 rounded-lg" />
+                  <div className="flex-1">
+                    <Skeleton className="h-3.5 w-36" />
+                    <Skeleton className="mt-2 h-3 w-20" />
+                  </div>
+                  <Skeleton className="h-4 w-16" />
                 </div>
-                <p className="text-sm text-muted-foreground max-w-xs">
-                  Head to the Money module to log income and expenses — your balance updates here
-                  instantly.
+              ))}
+            </Card>
+          ) : summary.recent.length === 0 ? (
+            <EmptyState
+              icon={Receipt}
+              title="No transactions yet"
+              description="Log your first income or expense and your balance, budgets and charts all start filling in."
+              action={
+                <AddTransactionDialog
+                  onCreated={() => {
+                    announceDataChanged();
+                    reload();
+                  }}
+                  trigger={
+                    <Button>
+                      <Plus />
+                      Add a transaction
+                    </Button>
+                  }
+                />
+              }
+            />
+          ) : (
+            <Card className="divide-y divide-border overflow-hidden">
+              {summary.recent.map((t) => (
+                <Link
+                  key={t.id}
+                  to={`/money/transactions/${t.id}`}
+                  className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
+                >
+                  <span
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-lg",
+                      t.type === "income"
+                        ? "bg-emerald-400/10 text-emerald-400"
+                        : "bg-secondary text-muted-foreground",
+                    )}
+                  >
+                    {t.type === "income" ? (
+                      <ArrowUpRight className="size-4" />
+                    ) : (
+                      <ArrowDownLeft className="size-4" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{t.note || t.category}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {t.category} · {shortDate(t.occurred_on)}
+                    </div>
+                  </div>
+                  <div
+                    className={cn(
+                      "tnum shrink-0 text-sm font-medium",
+                      t.type === "income" ? "text-emerald-400" : "text-foreground",
+                    )}
+                  >
+                    {t.type === "income" ? "+" : "−"}
+                    {formatMoney(t.amount)}
+                  </div>
+                </Link>
+              ))}
+            </Card>
+          )}
+        </Section>
+
+        <Section
+          title={summary?.checklist ? "Checklist" : "Checklists"}
+          actions={
+            summary?.checklist ? (
+              <Button variant="ghost" size="sm" asChild>
+                <Link to={`/checklists/${summary.checklist.id}`}>
+                  Open
+                  <ArrowRight />
+                </Link>
+              </Button>
+            ) : undefined
+          }
+        >
+          {!summary ? (
+            <Card className="p-5">
+              <Skeleton className="h-4 w-28" />
+              <div className="mt-5 space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-4 w-full" />
+                ))}
+              </div>
+            </Card>
+          ) : summary.checklist ? (
+            <Card className="p-5">
+              <div className="flex items-center gap-2">
+                {summary.checklist.emoji && (
+                  <span className="text-base leading-none">{summary.checklist.emoji}</span>
+                )}
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold">
+                  {summary.checklist.name}
                 </p>
               </div>
-            ) : (
-              <ul className="mt-4 divide-y divide-border/40">
-                {(summary?.recent ?? []).map((t) => (
-                  <li key={t.id} className="flex items-center gap-3 py-2.5">
-                    <span
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                        t.type === "income"
-                          ? "bg-emerald-400/15 text-emerald-300"
-                          : "bg-rose-400/15 text-rose-300"
-                      }`}
+              <p className="tnum mt-1 text-xs text-muted-foreground">
+                {summary.checklist.items.filter((i) => i.done).length} of{" "}
+                {summary.checklist.items.length} done
+              </p>
+              <Meter
+                className="mt-3"
+                value={
+                  summary.checklist.items.length
+                    ? summary.checklist.items.filter((i) => i.done).length /
+                      summary.checklist.items.length
+                    : 0
+                }
+                tone="positive"
+              />
+              <ul className="mt-4 space-y-1">
+                {summary.checklist.items.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => toggleItem(item.id, !item.done)}
+                      className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent/60"
                     >
-                      {t.type === "income" ? (
-                        <ArrowUpRight className="h-4 w-4" />
-                      ) : (
-                        <ArrowDownLeft className="h-4 w-4" />
-                      )}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{t.note || t.category}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {t.category} · {shortDate(t.occurred_on)}
-                      </div>
-                    </div>
-                    <div
-                      className={`shrink-0 text-sm font-semibold tabular-nums ${
-                        t.type === "income" ? "text-emerald-300" : "text-foreground/80"
-                      }`}
-                    >
-                      {t.type === "income" ? "+" : "−"}
-                      {formatMoney(t.amount)}
-                    </div>
+                      {/* The row button owns the toggle; this only shows the
+                          state. See ui/switch.tsx. */}
+                      <Checkbox checked={item.done} />
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 truncate",
+                          item.done && "text-muted-foreground line-through",
+                        )}
+                      >
+                        {item.title}
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>
-            )}
-          </Card>
-
-          <Card className="glass p-6 min-h-56">
-            {summary?.checklist ? (
-              <>
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="truncate font-semibold">
-                    {summary.checklist.emoji ? `${summary.checklist.emoji} ` : ""}
-                    {summary.checklist.name}
-                  </h3>
-                  <Link
-                    to={`/checklists/${summary.checklist.id}`}
-                    className="shrink-0 text-xs text-primary hover:underline underline-offset-4"
-                  >
-                    Open →
-                  </Link>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {summary.checklist.items.filter((i) => i.done).length} of{" "}
-                  {summary.checklist.items.length} done
-                </p>
-                <ul className="mt-4 space-y-2.5">
-                  {summary.checklist.items.map((item) => (
-                    <li key={item.id}>
-                      <button
-                        onClick={() => toggleItem(item.id, !item.done)}
-                        className="flex w-full items-center gap-3 text-left text-sm"
-                      >
-                        <span
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                            item.done ? "border-primary bg-primary" : "border-border"
-                          }`}
-                        >
-                          {item.done && <Check className="h-3 w-3 text-primary-foreground" />}
-                        </span>
-                        <span
-                          className={
-                            item.done ? "text-muted-foreground line-through" : "text-foreground"
-                          }
-                        >
-                          {item.title}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <>
-                <h3 className="font-semibold">Checklists</h3>
-                <p className="text-xs text-muted-foreground">Routines you run again and again</p>
-                <div className="mt-8 flex flex-col items-center justify-center gap-3 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                    <ListChecks className="h-6 w-6 text-primary" />
-                  </div>
-                  <p className="max-w-xs text-sm text-muted-foreground">
-                    Build one for the things you always forget — leaving home, travel packing.
-                  </p>
-                  <Link
-                    to="/checklists"
-                    className="text-sm font-medium text-primary hover:underline underline-offset-4"
-                  >
-                    Create a checklist →
-                  </Link>
-                </div>
-              </>
-            )}
-          </Card>
-        </div>
+            </Card>
+          ) : (
+            <EmptyState
+              compact
+              icon={ListChecks}
+              title="No checklists yet"
+              description="Build one for the things you always forget — leaving home, travel packing."
+              action={
+                <Button size="sm" asChild>
+                  <Link to="/checklists">Create a checklist</Link>
+                </Button>
+              }
+            />
+          )}
+        </Section>
       </div>
-    </>
+
+      {/*
+        Module shortcuts. The sidebar already links all of these, but it is
+        hidden on a phone and invisible to anyone who has not yet learned it —
+        and on the day-one dashboard, where every panel above is empty, these
+        four cards are the only thing telling the user what the app contains.
+      */}
+      <Section title="Everything else">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {MODULES.map((m) => (
+            <Link
+              key={m.to}
+              to={m.to}
+              className="card-interactive group rounded-xl border border-border bg-card p-4"
+            >
+              <div className="flex items-center justify-between">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                  <m.icon className="size-4" />
+                </span>
+                <ArrowRight className="size-4 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5" />
+              </div>
+              <p className="mt-3 text-sm font-medium">{m.label}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{m.blurb}</p>
+            </Link>
+          ))}
+        </div>
+      </Section>
+
+      {summary && summary.stats.memories > 0 && (
+        <p className="flex items-center justify-center gap-2 pb-2 text-xs text-muted-foreground">
+          <Sparkles className="size-3.5" />
+          {summary.stats.memories} memories kept · {summary.stats.notes} notes written
+        </p>
+      )}
+    </PageShell>
   );
 }

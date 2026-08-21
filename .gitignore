@@ -20,3 +20,6 @@ Thumbs.db
 
 # TypeScript incremental build artifacts
 *.tsbuildinfo
+
+# Local data dumps
+journal-backup.json

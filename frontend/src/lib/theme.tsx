@@ -57,7 +57,7 @@ export function applyTheme(theme: Theme): "light" | "dark" {
   root.style.colorScheme = resolved;
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", resolved === "light" ? "#f6f5fb" : "#0a0a0f");
+    ?.setAttribute("content", resolved === "light" ? "#ffffff" : "#0a0a0a");
   return resolved;
 }
 

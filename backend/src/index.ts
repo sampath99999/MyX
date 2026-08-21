@@ -76,15 +76,37 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
   const user = c.get("user");
   const monthPrefix = new Date().toISOString().slice(0, 7);
 
+  /*
+    Last month as well as this one. A number with nothing to compare it against
+    is trivia: "you have spent 69,000 this month" only becomes information when
+    the screen can also say whether that is more or less than usual.
+  */
+  const prevMonthPrefix = (() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().slice(0, 7);
+  })();
+
   const money = await c.env.DB.prepare(
     `SELECT
        COALESCE(SUM(CASE WHEN type='income'  THEN amount END), 0) AS income,
        COALESCE(SUM(CASE WHEN type='expense' THEN amount END), 0) AS expense,
-       COALESCE(SUM(CASE WHEN type='expense' AND occurred_on LIKE ?1 THEN amount END), 0) AS month_expense
+       COALESCE(SUM(CASE WHEN type='expense' AND occurred_on LIKE ?1 THEN amount END), 0) AS month_expense,
+       COALESCE(SUM(CASE WHEN type='income'  AND occurred_on LIKE ?1 THEN amount END), 0) AS month_income,
+       COALESCE(SUM(CASE WHEN type='expense' AND occurred_on LIKE ?3 THEN amount END), 0) AS prev_month_expense,
+       COALESCE(SUM(CASE WHEN type='income'  AND occurred_on LIKE ?3 THEN amount END), 0) AS prev_month_income
      FROM transactions WHERE user_id = ?2`,
   )
-    .bind(`${monthPrefix}%`, user.sub)
-    .first<{ income: number; expense: number; month_expense: number }>();
+    .bind(`${monthPrefix}%`, user.sub, `${prevMonthPrefix}%`)
+    .first<{
+      income: number;
+      expense: number;
+      month_expense: number;
+      month_income: number;
+      prev_month_expense: number;
+      prev_month_income: number;
+    }>();
 
   /*
     These three were hardcoded to 0 long after Tasks, Notes and Checklists
@@ -96,10 +118,19 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
     `SELECT
        (SELECT COUNT(*) FROM tasks      WHERE user_id = ?1 AND status = 'open') AS open_tasks,
        (SELECT COUNT(*) FROM notes      WHERE user_id = ?1 AND archived = 0)    AS notes,
-       (SELECT COUNT(*) FROM checklists WHERE user_id = ?1)                     AS checklists`,
+       (SELECT COUNT(*) FROM checklists WHERE user_id = ?1)                     AS checklists,
+       (SELECT COUNT(*) FROM memories   WHERE user_id = ?1)                     AS memories,
+       (SELECT COUNT(*) FROM tasks      WHERE user_id = ?1 AND status = 'open'
+          AND due_date IS NOT NULL AND due_date < date('now'))                  AS overdue_tasks`,
   )
     .bind(user.sub)
-    .first<{ open_tasks: number; notes: number; checklists: number }>();
+    .first<{
+      open_tasks: number;
+      notes: number;
+      checklists: number;
+      memories: number;
+      overdue_tasks: number;
+    }>();
 
   /*
     The two dashboard panels. Both were shipped as hardcoded placeholder markup
@@ -165,18 +196,58 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
       ).results ?? []
     : [];
 
+  /*
+    Fourteen days of daily spend, for the sparkline under the month total. Days
+    with no spending are absent from the result set, so the gaps are filled
+    below — a line that skips them would compress time and lie about the shape.
+  */
+  const sparkFrom = new Date(Date.now() - 13 * 86_400_000).toISOString().slice(0, 10);
+  const sparkRows = await c.env.DB.prepare(
+    `SELECT occurred_on AS day, COALESCE(SUM(amount), 0) AS total
+       FROM transactions
+      WHERE user_id = ?1 AND type = 'expense' AND occurred_on >= ?2
+      GROUP BY occurred_on ORDER BY occurred_on`,
+  )
+    .bind(user.sub, sparkFrom)
+    .all<{ day: string; total: number }>();
+
+  const byDay = new Map((sparkRows.results ?? []).map((r) => [r.day, r.total / 100]));
+  const spark: { day: string; amount: number }[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const day = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+    spark.push({ day, amount: byDay.get(day) ?? 0 });
+  }
+
   const balance = ((money?.income ?? 0) - (money?.expense ?? 0)) / 100;
   const monthSpend = (money?.month_expense ?? 0) / 100;
+  const monthIncome = (money?.month_income ?? 0) / 100;
+  const prevMonthSpend = (money?.prev_month_expense ?? 0) / 100;
+  const prevMonthIncome = (money?.prev_month_income ?? 0) / 100;
+
+  /** Percentage change, or null when there is no baseline to divide by. */
+  const delta = (now: number, before: number) =>
+    before > 0 ? ((now - before) / before) * 100 : null;
 
   return c.json({
     greeting: `Welcome back, ${user.name.split(" ")[0]}`,
     stats: {
       balance,
       monthSpend,
+      monthIncome,
+      prevMonthSpend,
+      prevMonthIncome,
+      spendDelta: delta(monthSpend, prevMonthSpend),
+      incomeDelta: delta(monthIncome, prevMonthIncome),
+      // Of what came in this month, how much is still here. Negative means the
+      // month is being funded out of the balance.
+      savingsRate: monthIncome > 0 ? ((monthIncome - monthSpend) / monthIncome) * 100 : null,
       openTasks: counts?.open_tasks ?? 0,
+      overdueTasks: counts?.overdue_tasks ?? 0,
       notes: counts?.notes ?? 0,
       checklists: counts?.checklists ?? 0,
+      memories: counts?.memories ?? 0,
     },
+    spark,
     today: {
       tasks: dueTasks.results ?? [],
       bills: (dueBills.results ?? []).map((b) => ({ ...b, amount: b.amount / 100 })),

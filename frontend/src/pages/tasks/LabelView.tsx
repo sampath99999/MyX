@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { Tag, Loader2, Trash2 } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Tag, Trash2 } from "lucide-react";
 import TaskItem from "@/components/tasks/TaskItem";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { PageShell, PageHeader, EmptyState } from "@/components/ui/page";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 import { api, type Task } from "@/lib/api";
 import { useTasksContext } from "./context";
 
 export default function LabelView() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const labelId = Number(id);
   const ctx = useTasksContext();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const { confirm, confirmDialog } = useConfirm();
+  const toast = useToast();
 
   const label = ctx.labels.find((l) => l.id === labelId);
 
@@ -38,47 +47,55 @@ export default function LabelView() {
   };
 
   async function removeLabel() {
-    if (!confirm("Delete this label? It will be removed from all tasks.")) return;
+    /*
+      This used to be window.confirm(), which cannot say how many tasks are
+      about to lose the label — the only fact that makes the decision.
+    */
+    const ok = await confirm({
+      title: `Delete the "${label?.name ?? "label"}" label?`,
+      description: `It is removed from ${tasks.length} open task${tasks.length === 1 ? "" : "s"}. The tasks themselves are untouched.`,
+      confirmLabel: "Delete label",
+    });
+    if (!ok) return;
     await api.deleteLabel(labelId);
+    toast.success(`"${label?.name ?? "Label"}" deleted`);
     ctx.reloadAll();
-    window.history.back();
+    navigate("/tasks");
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-6 lg:p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl"
-            style={{ backgroundColor: `${label?.color ?? "#8b5cf6"}22` }}
-          >
-            <Tag className="h-5 w-5" style={{ color: label?.color ?? "#8b5cf6" }} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">{label?.name ?? "Label"}</h1>
-            <p className="text-xs text-muted-foreground">{tasks.length} open task{tasks.length === 1 ? "" : "s"}</p>
-          </div>
-        </div>
-        <button
-          onClick={removeLabel}
-          title="Delete label"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
+    <PageShell width="narrow" className="space-y-5">
+      {confirmDialog}
+      <PageHeader
+        eyebrow="Label"
+        title={
+          <span className="flex items-center gap-2.5">
+            <span
+              className="size-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: label?.color ?? "currentColor" }}
+            />
+            {label?.name ?? "Label"}
+          </span>
+        }
+        description={`${tasks.length} open task${tasks.length === 1 ? "" : "s"}`}
+        actions={
+          <Button variant="outline" onClick={removeLabel}>
+            <Trash2 />
+            Delete label
+          </Button>
+        }
+      />
 
       {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
+        <SkeletonRows count={4} />
       ) : tasks.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-center">
-          <div className="text-3xl">🏷️</div>
-          <p className="text-sm text-muted-foreground">No open tasks with this label.</p>
-        </div>
+        <EmptyState
+          icon={Tag}
+          title="Nothing carries this label"
+          description="Add it to a task from the task's detail view, or type #label in the quick-add box."
+        />
       ) : (
-        <div className="flex flex-col">
+        <Card className="overflow-hidden">
           {tasks.map((t) => (
             <TaskItem
               key={t.id}
@@ -89,8 +106,8 @@ export default function LabelView() {
               onLabelsChanged={ctx.reloadAll}
             />
           ))}
-        </div>
+        </Card>
       )}
-    </div>
+    </PageShell>
   );
 }

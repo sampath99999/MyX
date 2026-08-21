@@ -58,6 +58,14 @@ export default defineConfig({
           // Used by every screen; one shared chunk beats ~40 per-icon files.
           if (id.includes("lucide-react")) return "icons";
           if (id.includes("@radix-ui")) return "ui";
+          /*
+            The landing page's animation library. Named so its weight is visible
+            in the build output rather than hidden inside `vendor` — the landing
+            page is eagerly imported (it is the prerendered entry point), so
+            anything it pulls in is paid for on every first load, and that is a
+            cost worth being able to see.
+          */
+          if (id.includes("motion") || id.includes("framer-motion")) return "motion";
           // React, the router, and the small class-name helpers.
           return "vendor";
         },

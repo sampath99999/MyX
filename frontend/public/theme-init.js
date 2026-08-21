@@ -20,7 +20,7 @@
     root.style.colorScheme = light ? "light" : "dark";
 
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", light ? "#f6f5fb" : "#0a0a0f");
+    if (meta) meta.setAttribute("content", light ? "#ffffff" : "#0a0a0a");
   } catch (e) {
     // Storage blocked (Safari private mode) — the dark class already on <html>
     // stands, which is the pre-existing behaviour.
