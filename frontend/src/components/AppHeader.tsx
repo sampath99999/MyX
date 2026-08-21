@@ -4,8 +4,10 @@ import { announceDataChanged } from "@/lib/useAuthenticatedLoad";
 import NotificationsBell from "@/components/NotificationsBell";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import ThemeToggle from "@/components/ThemeToggle";
-import { LogoMark } from "@/components/Logo";
+import AccountMenu from "@/components/AccountMenu";
+import Logo, { LogoMark } from "@/components/Logo";
 import MobileNav from "@/components/MobileNav";
+import ModuleBar from "@/components/nav/ModuleBar";
 import { NAV_GROUPS } from "@/components/navigation";
 
 /*
@@ -78,23 +80,37 @@ export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }
         </span>
       </div>
 
+      {/* Desktop: the mark, then the modules. The sidebar used to carry both. */}
+      <Logo
+        to="/dashboard"
+        label="MyX — dashboard"
+        size={28}
+        showName={false}
+        className="mr-1 hidden shrink-0 md:flex"
+      />
+      <ModuleBar />
+
       {/*
         Search, as a field rather than an icon. It reads as somewhere to type,
         which is what makes anyone try it in the first place, and the shortcut
         printed on the right is how a keyboard user learns the shortcut exists.
+
+        It no longer stretches: the modules have the left of the bar now, and a
+        field that grows into whatever is left over made the row look different
+        on every window width.
       */}
       <button
         onClick={onOpenSearch}
-        className="hidden h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm text-muted-foreground transition-colors hover:border-ring/40 hover:bg-accent/50 md:flex md:max-w-sm"
+        className="ml-auto hidden h-9 w-56 shrink-0 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm text-muted-foreground transition-colors hover:border-ring/40 hover:bg-accent/50 md:flex lg:w-64"
       >
         <Search className="size-4 shrink-0" />
         <span className="truncate">Search everything…</span>
-        <kbd className="tnum ml-auto hidden shrink-0 rounded border border-border px-1.5 py-px font-sans text-[10px] text-muted-foreground sm:block">
+        <kbd className="tnum ml-auto hidden shrink-0 rounded border border-border px-1.5 py-px font-sans text-[10px] text-muted-foreground lg:block">
           {isMac ? "⌘" : "Ctrl"} K
         </kbd>
       </button>
 
-      <div className="ml-auto flex items-center gap-0.5">
+      <div className="ml-auto flex items-center gap-0.5 md:ml-1">
         {/* Search collapses to its icon below md, where the field would eat the
             whole bar. */}
         <button
@@ -135,6 +151,10 @@ export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }
           <ThemeToggle />
         </span>
         <NotificationsBell />
+
+        {/* Desktop only: the phone keeps the account in its drawer, where the
+            name and address have room to be shown rather than initialled. */}
+        <AccountMenu variant="compact" className="hidden md:flex" />
       </div>
     </header>
   );
