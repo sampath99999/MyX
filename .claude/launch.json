@@ -2,6 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "//": "Both ports are fixed on purpose, so autoPort must stay false. The API's CORS allowlist hardcodes http://localhost:5173 (see backend/src/lib/origins.ts), so a frontend on any other port has every request rejected; and frontend/.env points VITE_API_URL at http://localhost:8787, so the API moving breaks the same link from the other end. Free the port rather than reassigning it.",
       "name": "backend",
       "runtimeExecutable": "npm",
       "runtimeArgs": [
@@ -10,7 +11,8 @@
         "--prefix",
         "backend"
       ],
-      "port": 8787
+      "port": 8787,
+      "autoPort": false
     },
     {
       "name": "frontend",
@@ -21,7 +23,8 @@
         "--prefix",
         "frontend"
       ],
-      "port": 5173
+      "port": 5173,
+      "autoPort": false
     },
     {
       "name": "frontend-preview",
@@ -32,7 +35,8 @@
         "--prefix",
         "frontend"
       ],
-      "port": 4173
+      "port": 4173,
+      "autoPort": false
     }
   ]
 }

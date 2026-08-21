@@ -389,6 +389,64 @@ tasks.post("/:id/:action{complete|reopen}", async (c) => {
 });
 
 /** POST /api/tasks/:id/move — Kanban move. Body: { section_id, position } */
+/** Ceiling on a reorder payload — it becomes one statement per id. */
+const MAX_REORDER = 200;
+
+/**
+ * POST /api/tasks/reorder — one column's tasks, in their new order.
+ *
+ * `/:id/move` sets one task's section and position, which is enough to drop a
+ * card at the end of a column and nothing more. Reordering within a column
+ * needs every task after the insertion point renumbered, and doing that as N
+ * separate calls is both slow and wrong: they race, and a failure halfway
+ * leaves two cards claiming the same position.
+ *
+ * So the client sends the destination column exactly as it should end up. That
+ * covers a move between columns too — the task is in the array, so it gets the
+ * new section_id along with its index. One batch, one round trip, idempotent on
+ * replay.
+ *
+ * `section_id` may be null: the first column of a board holds every task that
+ * has no section, and dropping into it has to be able to say so.
+ */
+tasks.post("/reorder", async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json().catch(() => null);
+
+  const section_id = body?.section_id != null ? Number(body.section_id) : null;
+  if (section_id != null && !Number.isInteger(section_id))
+    throw new HTTPException(400, { message: "section_id must be an integer or null" });
+
+  const ids: number[] = Array.isArray(body?.ids) ? body.ids.map(Number) : [];
+  if (ids.some((n) => !Number.isInteger(n)))
+    throw new HTTPException(400, { message: "ids must be an array of task ids" });
+  // The array length becomes the statement count in the batch below.
+  if (ids.length > MAX_REORDER) throw new HTTPException(400, { message: "Too many tasks" });
+  if (!ids.length) return c.json({ ok: true });
+
+  /*
+    A section this user does not own would otherwise be a way to file tasks into
+    someone else's column. The UPDATE is scoped by user_id, so the *tasks* are
+    safe either way, but the section_id it writes is attacker-supplied and worth
+    checking before it lands in a row.
+  */
+  if (section_id != null) {
+    const owned = await c.env.DB.prepare("SELECT id FROM sections WHERE id = ? AND user_id = ?")
+      .bind(section_id, user.sub)
+      .first();
+    if (!owned) throw new HTTPException(404, { message: "Section not found" });
+  }
+
+  await c.env.DB.batch(
+    ids.map((taskId, position) =>
+      c.env.DB.prepare(
+        "UPDATE tasks SET section_id = ?, position = ? WHERE id = ? AND user_id = ?",
+      ).bind(section_id, position, taskId, user.sub),
+    ),
+  );
+  return c.json({ ok: true });
+});
+
 tasks.post("/:id/move", async (c) => {
   const user = c.get("user");
   const id = Number(c.req.param("id"));

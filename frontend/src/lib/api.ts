@@ -775,6 +775,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ section_id, position }),
     }),
+  /**
+   * One column's tasks, in the order they should end up.
+   *
+   * `moveTask` sets a single task's section and position, which is only enough
+   * to append to a column. Anything that changes the order of the cards already
+   * in it has to renumber all of them, and N separate calls race each other.
+   */
+  reorderTasks: (section_id: number | null, ids: number[]) =>
+    request<{ ok: true }>("/api/tasks/reorder", {
+      method: "POST",
+      body: JSON.stringify({ section_id, ids }),
+    }),
   setTaskLabels: (id: number, label_ids: number[]) =>
     request<{ ok: true }>(`/api/tasks/${id}/labels`, {
       method: "PUT",
@@ -808,6 +820,17 @@ export const api = {
     request<{ section: Section }>(`/api/projects/${projectId}/sections`, {
       method: "POST",
       body: JSON.stringify({ name }),
+    }),
+  renameSection: (projectId: number, sectionId: number, name: string) =>
+    request<{ ok: true }>(`/api/projects/${projectId}/sections/${sectionId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  /** The columns, in their new left-to-right order. */
+  reorderSections: (projectId: number, ids: number[]) =>
+    request<{ ok: true }>(`/api/projects/${projectId}/sections/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
     }),
   deleteSection: (projectId: number, sectionId: number) =>
     request<{ ok: true }>(`/api/projects/${projectId}/sections/${sectionId}`, { method: "DELETE" }),

@@ -121,6 +121,9 @@ interface SectionRow {
 
 const DEFAULT_SECTIONS = ["To do", "Doing", "Done"];
 
+/** Ceiling on a reorder payload — it becomes one statement per id. */
+const MAX_REORDER = 200;
+
 /** GET /api/projects/:id/sections — seeds To do / Doing / Done on first use. */
 projects.get("/:id/sections", async (c) => {
   const user = c.get("user");
@@ -183,6 +186,42 @@ projects.post("/:id/sections", async (c) => {
     .bind(user.sub, id, name, posRow?.pos ?? 0)
     .first<SectionRow>();
   return c.json({ section: created }, 201);
+});
+
+/**
+ * POST /api/projects/:id/sections/reorder — the columns, in their new order.
+ *
+ * The whole list rather than "move section 4 to index 1". A single move has to
+ * be expanded into a renumber of everything after it anyway, and doing that
+ * expansion on the client means the server trusts an arithmetic result it
+ * cannot check. Sending the order outright makes the write idempotent: replay
+ * it and the board lands in the same place.
+ *
+ * Positions are rewritten from the array index, and the WHERE clause carries
+ * both project_id and user_id, so an id belonging to someone else's project
+ * updates nothing rather than being moved.
+ */
+projects.post("/:id/sections/reorder", async (c) => {
+  const user = c.get("user");
+  const id = Number(c.req.param("id"));
+  const body = await c.req.json().catch(() => null);
+  if (!Number.isInteger(id)) throw new HTTPException(400, { message: "Invalid id" });
+
+  const ids: number[] = Array.isArray(body?.ids) ? body.ids.map(Number) : [];
+  if (!ids.length || ids.some((n) => !Number.isInteger(n)))
+    throw new HTTPException(400, { message: "ids must be a non-empty array of section ids" });
+  // A board with more columns than this is not a board. The cap is here because
+  // the array length becomes the statement count in the batch below.
+  if (ids.length > MAX_REORDER) throw new HTTPException(400, { message: "Too many sections" });
+
+  await c.env.DB.batch(
+    ids.map((sectionId, position) =>
+      c.env.DB.prepare(
+        "UPDATE sections SET position = ? WHERE id = ? AND project_id = ? AND user_id = ?",
+      ).bind(position, sectionId, id, user.sub),
+    ),
+  );
+  return c.json({ ok: true });
 });
 
 /** PATCH /api/projects/:id/sections/:sectionId — rename. */
