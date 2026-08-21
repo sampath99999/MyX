@@ -7,7 +7,6 @@ import {
   Hash,
   Plus,
   Layers,
-  Loader2,
   Tag,
   HelpCircle,
   ChevronDown,
@@ -46,7 +45,6 @@ export default function TasksLayout() {
     const saved = localStorage.getItem(SPACE_KEY);
     return saved ? Number(saved) : null;
   });
-  const [ready, setReady] = useState(false);
   const today = todayISO();
 
   const reloadAll = useCallback(async () => {
@@ -61,11 +59,10 @@ export default function TasksLayout() {
     setProjects(projRes.projects);
     setLabels(labelRes.labels);
     setCounts(countRes);
-    setReady(true);
   }, [user, spaceId, today]);
 
   useEffect(() => {
-    reloadAll().catch(() => setReady(true));
+    reloadAll().catch(() => {});
   }, [reloadAll]);
 
   function pickSpace(id: number | null) {
@@ -312,13 +309,22 @@ export default function TasksLayout() {
           </div>
         </div>
 
-        {!ready ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <Outlet context={ctx} />
-        )}
+        {/*
+          The outlet renders straight away.
+
+          Both of these modules used to hold it behind a spinner until the
+          layout's own fetch — spaces, projects and labels here; folders and
+          tags in Notes — came back. Nothing below actually needed that: every
+          child route reads the filters it queries with from local state that
+          exists on the first render, and every one of them has its own loading
+          state. So the spinner was not covering a gap, it was creating one:
+          the child's request could not start until the layout's had finished,
+          which serialised two calls that have no reason to wait for each other.
+
+          Money never did this, which is why Notes and Tasks were the only two
+          places in the app that flashed a spinner on the way in.
+        */}
+        <Outlet context={ctx} />
       </div>
     </div>
   );

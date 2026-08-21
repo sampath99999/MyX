@@ -61,7 +61,16 @@ export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }
       anything anchored here. Menus portal to <body>, and this keeps the header
       itself above the scroller.
     */
-    <header className="glass-bar relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 sm:px-4">
+    <header
+      /*
+        The gutter matches the page's, not the bar's own taste. It was a flat
+        16px against content that indents 32px at `lg`, so the search field
+        started 16px to the left of every heading beneath it and the last icon
+        overhung the right edge of the content by the same amount. Nothing about
+        that is nameable at a glance; it just makes a screen feel loose.
+      */
+      className="glass-bar relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 sm:px-6 lg:px-8"
+    >
       {/*
         Phone only: the way into the menu, the mark, then the name of the
         screen. The menu button leads because it is the control, and because a

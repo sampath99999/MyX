@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search, Loader2, Pin, StickyNote, Trash2, Hash } from "lucide-react";
+import { SkeletonRows } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, type NoteListItem } from "@/lib/api";
@@ -83,10 +84,13 @@ export default function NotesList() {
         </div>
       </div>
 
+      {/*
+        A skeleton rather than a spinner. Every other list in the app draws the
+        shape of what is coming; this one span 20px of nothing in the middle of
+        an empty column, which reads as "stuck" rather than "loading".
+      */}
       {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
+        <SkeletonRows count={5} />
       ) : notes.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-20 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">

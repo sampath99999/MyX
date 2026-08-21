@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { StickyNote, Pin, Trash2, Folder as FolderIcon, Plus, Loader2, Hash } from "lucide-react";
+import { StickyNote, Pin, Trash2, Folder as FolderIcon, Plus, Hash } from "lucide-react";
 import { api, type Folder } from "@/lib/api";
 import NewFolderDialog from "@/components/notes/NewFolderDialog";
 import type { NotesContextValue, NotesView } from "./context";
@@ -14,17 +14,15 @@ export default function NotesLayout() {
   const [folderId, setFolderId] = useState<number | null>(null);
   const [view, setView] = useState<NotesView>("all");
   const [tag, setTag] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
 
   const reloadMeta = useCallback(async () => {
     const [f, t] = await Promise.all([api.listFolders(), api.listNoteTags()]);
     setFolders(f.folders);
     setTags(t.tags);
-    setReady(true);
   }, []);
 
   useEffect(() => {
-    reloadMeta().catch(() => setReady(true));
+    reloadMeta().catch(() => {});
   }, [reloadMeta]);
 
   function selectView(v: NotesView) {
@@ -158,13 +156,22 @@ export default function NotesLayout() {
           ))}
         </div>
 
-        {!ready ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          </div>
-        ) : (
-          <Outlet context={ctx} />
-        )}
+        {/*
+          The outlet renders straight away.
+
+          Both of these modules used to hold it behind a spinner until the
+          layout's own fetch — spaces, projects and labels here; folders and
+          tags in Notes — came back. Nothing below actually needed that: every
+          child route reads the filters it queries with from local state that
+          exists on the first render, and every one of them has its own loading
+          state. So the spinner was not covering a gap, it was creating one:
+          the child's request could not start until the layout's had finished,
+          which serialised two calls that have no reason to wait for each other.
+
+          Money never did this, which is why Notes and Tasks were the only two
+          places in the app that flashed a spinner on the way in.
+        */}
+        <Outlet context={ctx} />
       </div>
     </div>
   );

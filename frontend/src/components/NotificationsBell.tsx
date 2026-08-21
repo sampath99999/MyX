@@ -60,7 +60,7 @@ export default function NotificationsBell() {
           aria-label={items.length ? `Notifications, ${items.length} items` : "Notifications"}
           /* `tap` for the hit area and size-9 below md: this sits in a row of
              adjacent controls on a phone, where 32px is a coin toss. */
-          className="tap relative flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:size-8"
+          className="tap relative flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <Bell className="size-[1.05rem]" />
           {items.length > 0 && (

@@ -39,7 +39,7 @@ export default function ThemeToggle({ className }: { className?: string }) {
           aria-label={`Theme: ${theme}`}
           title="Theme"
           className={cn(
-            "tap flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:size-8",
+            "tap flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
             className,
           )}
         >
