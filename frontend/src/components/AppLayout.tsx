@@ -1,32 +1,113 @@
 import { useEffect, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
-import { Plus, MailWarning } from "lucide-react";
-import Dock from "@/components/nav/Dock";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Settings, PanelLeftClose, PanelLeft, Plus, MailWarning } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import AppHeader from "@/components/AppHeader";
+import Logo, { LogoMark } from "@/components/Logo";
+import AccountMenu from "@/components/AccountMenu";
+import { NAV_GROUPS, type NavItem } from "@/components/navigation";
+import RailLabel from "@/components/RailLabel";
 import CommandPalette from "@/components/CommandPalette";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import { announceDataChanged } from "@/lib/useAuthenticatedLoad";
+import { cn } from "@/lib/utils";
 
 /*
-  The app shell: a bar across the top, the page underneath, and nothing else.
+  The app shell: a menu down the side, a bar across the top, content between.
 
-  There was a 240px sidebar here. On a 13" laptop it was ~19% of the window,
-  permanently, for navigation performed a handful of times an hour — and the
-  screens that wanted width most, the ledger and the board, were exactly the
-  ones it squeezed. It also could not show the level below itself, so every
-  module drew its own strip of tabs underneath, and the app had three
-  navigation surfaces on screen at once.
+  Two things changed here beyond the paint.
 
-  What is here instead: a dock floating over the page on a desktop
-  (nav/Dock.tsx), the launcher on a phone and on the G key (nav/Launcher.tsx),
-  and a header that says where you are rather than listing where you could go.
+  The nav is grouped. Six flat items reads as a list to be scanned; two labelled
+  groups reads as a structure to be navigated, and the labels are what tell a
+  new user that "Memories" is a personal thing rather than a system log.
+
+  The sidebar collapses to icons and remembers it. On a 13" laptop the 240px
+  rail was ~19% of the window, permanently, for navigation the user performs a
+  few times an hour — and the screens that need width most (the ledger, the
+  Kanban board) are exactly the ones it squeezed.
 */
+
+const COLLAPSE_KEY = "myx.sidebar.collapsed";
+
+/**
+ * One row of the rail, in either state. Written once so the expanded and
+ * collapsed versions cannot drift in padding, radius or active treatment.
+ */
+function NavRow({
+  to,
+  end,
+  icon: Icon,
+  label,
+  collapsed,
+}: {
+  to: string;
+  end?: boolean;
+  icon: NavItem["icon"];
+  label: string;
+  collapsed: boolean;
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        cn(
+          "group relative flex items-center gap-2.5 rounded-lg text-sm font-medium transition-colors",
+          collapsed ? "justify-center p-2.5" : "px-3 py-2",
+          isActive
+            ? "bg-brand/10 text-foreground"
+            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {/*
+            The active marker. A filled row alone was too quiet to find at a
+            glance in a list of six, and turning the whole row brand-coloured
+            was too loud for something that is on screen permanently. A short
+            bar at the edge plus a tinted icon reads instantly and stays calm.
+          */}
+          <span
+            className={cn(
+              "absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand transition-opacity",
+              isActive ? "opacity-100" : "opacity-0",
+            )}
+          />
+          <Icon
+            className={cn("size-[1.05rem] shrink-0 transition-colors", isActive && "text-brand")}
+          />
+          {!collapsed && label}
+          {collapsed && <RailLabel>{label}</RailLabel>}
+        </>
+      )}
+    </NavLink>
+  );
+}
 
 export default function AppLayout() {
   const { user } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const { pathname } = useLocation();
+
+  const toggleCollapsed = () => {
+    setCollapsed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        // The choice still applies to this tab; it just will not survive a reload.
+      }
+      return next;
+    });
+  };
 
   /*
     ⌘K / Ctrl+K, owned here rather than inside the palette so the shortcut works
@@ -39,6 +120,11 @@ export default function AppLayout() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setSearchOpen(true);
+      }
+      // "[" folds the rail, the way every editor does it.
+      if ((e.metaKey || e.ctrlKey) && e.key === "[") {
+        e.preventDefault();
+        toggleCollapsed();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -62,7 +148,87 @@ export default function AppLayout() {
         Skip to content
       </a>
 
-      {/* ---------- Header, then the page ---------- */}
+      {/* ---------- Sidebar: navigation, and who you are ---------- */}
+      <aside
+        className={cn(
+          "hidden shrink-0 flex-col border-r border-border bg-card/40 transition-[width] duration-200 md:flex",
+          collapsed ? "w-[4.25rem] px-2.5 py-3" : "w-[15rem] px-3 py-3",
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center gap-1",
+            collapsed ? "flex-col" : "justify-between",
+          )}
+        >
+          {collapsed ? (
+            <Link to="/dashboard" aria-label="MyX — dashboard" className="p-1">
+              <LogoMark size={28} />
+            </Link>
+          ) : (
+            <Logo to="/dashboard" label="MyX — dashboard" size={28} className="px-1 py-1" />
+          )}
+
+          {/*
+            One toggle, in one place, in both states. It used to be at the top
+            when expanded and at the very bottom when collapsed, so the control
+            that undoes an action was not where the action had just happened.
+          */}
+          <button
+            onClick={toggleCollapsed}
+            title={`${collapsed ? "Expand" : "Collapse"} sidebar (Ctrl + [)`}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              collapsed && "mt-1",
+            )}
+          >
+            {collapsed ? <PanelLeft className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </button>
+        </div>
+
+        {/*
+          The scroller is dropped while collapsed on purpose. `overflow-y: auto`
+          forces the other axis to clip too, which would slice the hover labels
+          off at the rail's edge — and a rail of seven icons has nothing to
+          scroll anyway.
+        */}
+        <nav
+          className={cn(
+            "mt-4 flex min-h-0 flex-1 flex-col gap-4",
+            collapsed ? "overflow-visible" : "overflow-y-auto",
+          )}
+        >
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              {collapsed ? (
+                <div className="mx-auto mb-2 h-px w-5 bg-border" />
+              ) : (
+                <p className="eyebrow mb-1.5 px-3">{group.label}</p>
+              )}
+              <div className="flex flex-col gap-0.5">
+                {group.items.map((item) => (
+                  <NavRow key={item.to} {...item} collapsed={collapsed} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="mt-3 flex flex-col gap-1.5 border-t border-border pt-3">
+          <NavRow to="/settings" icon={Settings} label="Settings" collapsed={collapsed} />
+          {/*
+            The account moved out of the header and down here, where every app
+            of this shape keeps it. The header had five controls crowded into
+            its right corner; the sidebar had a blank foot and no indication of
+            which account you were even looking at.
+          */}
+          <AccountMenu collapsed={collapsed} />
+        </div>
+      </aside>
+
+      {/* ---------- Header, routed content, mobile tab bar ---------- */}
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader onOpenSearch={() => setSearchOpen(true)} />
 
@@ -96,17 +262,9 @@ export default function AppLayout() {
           opening a note from halfway down the list left the note scrolled
           halfway down too.
         */}
-        {/*
-          `pb-24` on desktop is the dock's rent. It floats over the page rather
-          than taking a column of it, which is the point — but a page that ends
-          flush with the viewport would end underneath it, so the scroller
-          leaves the last inch clear.
-        */}
-        <main id="main" key={pathname} className="min-h-0 flex-1 overflow-y-auto md:pb-24">
+        <main id="main" key={pathname} className="min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
-
-        <Dock />
 
         {/*
           The one write worth a permanent target on a phone.

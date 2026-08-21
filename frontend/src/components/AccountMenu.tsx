@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ChevronsUpDown, LogOut, Settings, ShieldCheck } from "lucide-react";
 import { Menu, MenuItem, MenuLink, MenuSeparator } from "@/components/ui/menu";
+import RailLabel from "@/components/RailLabel";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -14,24 +15,27 @@ import { cn } from "@/lib/utils";
   personal and a work login, and it was the one thing the shell never said out
   loud.
 
-  It is now the last thing in the header on a desktop and the last thing in the
-  drawer on a phone — one component either way, so the two can never disagree
-  about what signing out does. The drawer has room to print the name and the
-  address; the header shows the initial and saves them for the menu.
+  It now sits at the foot of the sidebar, where every app of this shape keeps
+  it. Below `md` there is no sidebar, so the same menu renders from a compact
+  trigger in the header instead — one component, so the two can never disagree
+  about what signing out does.
 */
 export default function AccountMenu({
   variant = "sidebar",
+  collapsed = false,
   className,
 }: {
   /** `sidebar` shows name and address; `compact` is the avatar alone. */
   variant?: "sidebar" | "compact";
+  /** Sidebar only: fall back to the avatar with a hover label. */
+  collapsed?: boolean;
   className?: string;
 }) {
   const { user, logout } = useAuth();
   const name = user?.name?.trim() || "Account";
   const initial = (name[0] ?? "?").toUpperCase();
   const unverified = user?.email_verified === false;
-  const compact = variant === "compact";
+  const compact = variant === "compact" || collapsed;
 
   return (
     <Menu
@@ -70,6 +74,10 @@ export default function AccountMenu({
               <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
             </>
           )}
+
+          {/* Only the collapsed rail has a hover state worth labelling; the
+              compact header trigger is on a phone, where nothing hovers. */}
+          {collapsed && <RailLabel>{name}</RailLabel>}
         </button>
       }
     >

@@ -1,51 +1,50 @@
-import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Search, Plus, ChevronRight } from "lucide-react";
+import { Search, Plus } from "lucide-react";
 import { announceDataChanged } from "@/lib/useAuthenticatedLoad";
 import NotificationsBell from "@/components/NotificationsBell";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import ThemeToggle from "@/components/ThemeToggle";
-import AccountMenu from "@/components/AccountMenu";
 import { LogoMark } from "@/components/Logo";
-import Launcher from "@/components/nav/Launcher";
-import { NAV_ITEMS } from "@/components/navigation";
+import MobileNav from "@/components/MobileNav";
+import { NAV_GROUPS } from "@/components/navigation";
 
 /*
-  The app's one persistent bar — and now the app's only persistent chrome.
+  The app's one persistent bar.
 
-  There is no navigation in it. The mark on the left opens the launcher (see
-  nav/Launcher.tsx), and beside it the bar says where you are, as a path rather
-  than a word: "Money › Transactions". That is the whole left-hand side.
+  The sidebar carries navigation and, since the shell was rebuilt, the account.
+  What is left here is the two things you do rather than the places you go:
+  find something, and add something. Everything else — theme, notifications —
+  sits to the right of them, and the corner is no longer five controls deep.
 
-  Everything that survives on the right is a verb rather than a place: search,
-  add, theme, what needs you, who you are.
+  The bar also says where you are, but only below `md`. The sidebar is hidden on
+  a phone, so without this the only clue to the current screen is the content
+  itself, and on a half-loaded page there is none. On desktop the rail already
+  says it and the page says it again in its own heading, so a third copy here
+  would be noise.
 */
 
-/** Where the current path sits, resolved from the one navigation list. */
-function useBreadcrumb(pathname: string) {
-  const module =
-    NAV_ITEMS.find((i) => (i.end ? pathname === i.to : pathname.startsWith(i.to))) ?? null;
+const SECTION_TITLES: [RegExp, string][] = [
+  [/^\/dashboard/, "Dashboard"],
+  [/^\/money\/transactions/, "Transactions"],
+  [/^\/money\/recurring/, "Bills"],
+  [/^\/money\/budgets/, "Budgets"],
+  [/^\/money\/loans/, "Loans"],
+  [/^\/money\/goals/, "Goals"],
+  [/^\/money\/investments/, "Investments"],
+  [/^\/money/, "Money"],
+  [/^\/tasks/, "Tasks"],
+  [/^\/notes/, "Notes"],
+  [/^\/memories/, "Memories"],
+  [/^\/checklists/, "Checklists"],
+  [/^\/settings/, "Settings"],
+];
 
-  if (!module) {
-    // Settings and anything else outside a module still deserves a name.
-    if (pathname.startsWith("/settings")) {
-      return { module: { to: "/settings", label: "Settings" }, section: null };
-    }
-    return { module: null, section: null };
-  }
-
-  const section =
-    module.sections?.find((s) => (s.end ? pathname === s.to : pathname.startsWith(s.to))) ?? null;
-
-  // A module's own index repeats its name; "Money › Overview" is noise.
-  return { module, section: section && section.to !== module.to ? section : null };
+function sectionTitle(pathname: string) {
+  return SECTION_TITLES.find(([re]) => re.test(pathname))?.[1] ?? "MyX";
 }
 
 export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { pathname } = useLocation();
-  const [launcherOpen, setLauncherOpen] = useState(false);
-  const { module, section } = useBreadcrumb(pathname);
-
   /*
     ⌘ on a Mac, Ctrl everywhere else. Resolved once at render rather than
     guessed in the copy, because "Ctrl K" printed on a Mac reads as a bug.
@@ -53,36 +52,6 @@ export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }
   const isMac =
     typeof navigator !== "undefined" &&
     /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent);
-
-  /*
-    "G" for go, unmodified.
-
-    A bare letter rather than a chord, because every comfortable chord is
-    already spoken for: ⌘K is this app's search, ⌘J and ⌘L belong to the
-    browser, and ⌃Space is the input switcher on a Mac. The price of a bare
-    letter is that it has to stay out of the way of typing, which is what the
-    field check below is for.
-  */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "g" && e.key !== "G") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const el = document.activeElement as HTMLElement | null;
-      if (
-        el &&
-        (el.tagName === "INPUT" ||
-          el.tagName === "TEXTAREA" ||
-          el.tagName === "SELECT" ||
-          el.isContentEditable)
-      ) {
-        return;
-      }
-      e.preventDefault();
-      setLauncherOpen(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   return (
     /*
@@ -93,54 +62,41 @@ export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }
       itself above the scroller.
     */
     <header className="glass-bar relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 sm:px-4">
+      {/*
+        Phone only: the way into the menu, the mark, then the name of the
+        screen. The menu button leads because it is the control, and because a
+        left-hand drawer opening from a left-hand button is the only version of
+        this that feels connected to anything.
+      */}
+      <div className="flex min-w-0 items-center gap-1.5 md:hidden">
+        <MobileNav groups={NAV_GROUPS} />
+        <Link to="/dashboard" aria-label="MyX — dashboard" className="shrink-0">
+          <LogoMark size={26} />
+        </Link>
+        <span className="truncate text-sm font-semibold tracking-tight">
+          {sectionTitle(pathname)}
+        </span>
+      </div>
+
+      {/*
+        Search, as a field rather than an icon. It reads as somewhere to type,
+        which is what makes anyone try it in the first place, and the shortcut
+        printed on the right is how a keyboard user learns the shortcut exists.
+      */}
       <button
-        onClick={() => setLauncherOpen(true)}
-        aria-label="Go to…"
-        aria-haspopup="dialog"
-        className="group flex shrink-0 items-center gap-2 rounded-lg p-1 transition-colors hover:bg-accent"
+        onClick={onOpenSearch}
+        className="hidden h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm text-muted-foreground transition-colors hover:border-ring/40 hover:bg-accent/50 md:flex md:max-w-sm"
       >
-        <LogoMark size={28} />
-        {/* The shortcut, printed. Nobody discovers a bare letter on their own. */}
-        <kbd className="hidden rounded border border-border px-1.5 py-0.5 font-sans text-[10px] text-muted-foreground transition-colors group-hover:text-foreground sm:block">
-          G
+        <Search className="size-4 shrink-0" />
+        <span className="truncate">Search everything…</span>
+        <kbd className="tnum ml-auto hidden shrink-0 rounded border border-border px-1.5 py-px font-sans text-[10px] text-muted-foreground sm:block">
+          {isMac ? "⌘" : "Ctrl"} K
         </kbd>
       </button>
 
-      {/* Where you are. Static text — the mark to its left is how you move. */}
-      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-0.5 text-sm">
-        {module && (
-          <Link
-            to={module.to}
-            className="truncate rounded-md px-1.5 py-1 font-semibold tracking-tight transition-colors hover:bg-accent"
-          >
-            {module.label}
-          </Link>
-        )}
-        {section && (
-          <>
-            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" />
-            <span className="truncate px-1.5 py-1 text-muted-foreground">{section.label}</span>
-          </>
-        )}
-      </nav>
-
       <div className="ml-auto flex items-center gap-0.5">
-        {/*
-          Search, as a field on a desktop and an icon on a phone. It reads as
-          somewhere to type, which is what makes anyone try it, and the shortcut
-          printed on the right is how a keyboard user learns it exists.
-        */}
-        <button
-          onClick={onOpenSearch}
-          className="mr-1 hidden h-9 w-56 shrink-0 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm text-muted-foreground transition-colors hover:border-ring/40 hover:bg-accent/50 md:flex lg:w-64"
-        >
-          <Search className="size-4 shrink-0" />
-          <span className="truncate">Search everything…</span>
-          <kbd className="tnum ml-auto hidden shrink-0 rounded border border-border px-1.5 py-px font-sans text-[10px] text-muted-foreground lg:block">
-            {isMac ? "⌘" : "Ctrl"} K
-          </kbd>
-        </button>
-
+        {/* Search collapses to its icon below md, where the field would eat the
+            whole bar. */}
         <button
           onClick={onOpenSearch}
           aria-label="Search"
@@ -169,14 +125,17 @@ export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }
           }
         />
 
+        {/*
+          Theme and the account are in the drawer on a phone, so they are not
+          here as well. The right-hand corner had six controls at 320px, which
+          left the screen name about seventy pixels to truncate into; it now has
+          two, and the title has room to actually say where you are.
+        */}
         <span className="hidden md:block">
           <ThemeToggle />
         </span>
         <NotificationsBell />
-        <AccountMenu variant="compact" />
       </div>
-
-      <Launcher open={launcherOpen} onOpenChange={setLauncherOpen} />
     </header>
   );
 }
