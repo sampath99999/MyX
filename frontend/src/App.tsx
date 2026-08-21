@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import lazyWithRetry from "@/lib/lazyWithRetry";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { ToastProvider } from "@/components/ui/toast";
@@ -27,37 +28,35 @@ import Terms from "@/pages/Terms";
 */
 import CalculatorsHub, { CalculatorRoute } from "@/pages/calculators/CalculatorsHub";
 
-const Login = lazy(() => import("@/pages/Login"));
-const NotFound = lazy(() => import("@/pages/NotFound"));
-const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
-const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
-const Settings = lazy(() => import("@/pages/Settings"));
-const VerifyEmail = lazy(() => import("@/pages/VerifyEmail"));
+const Login = lazyWithRetry(() => import("@/pages/Login"));
+const NotFound = lazyWithRetry(() => import("@/pages/NotFound"));
+const ForgotPassword = lazyWithRetry(() => import("@/pages/ForgotPassword"));
+const ResetPassword = lazyWithRetry(() => import("@/pages/ResetPassword"));
+const Settings = lazyWithRetry(() => import("@/pages/Settings"));
+const VerifyEmail = lazyWithRetry(() => import("@/pages/VerifyEmail"));
 // Unlinked and never prerendered — see pages/Admin.tsx.
-const Admin = lazy(() => import("@/pages/Admin"));
-const Dashboard = lazy(() => import("@/pages/Dashboard"));
-const MoneyLayout = lazy(() => import("@/pages/money/MoneyLayout"));
-const MoneyOverview = lazy(() => import("@/pages/money/MoneyOverview"));
-const Transactions = lazy(() => import("@/pages/money/Transactions"));
-const Recurring = lazy(() => import("@/pages/money/Recurring"));
-const Budgets = lazy(() => import("@/pages/money/Budgets"));
-const Loans = lazy(() => import("@/pages/money/Loans"));
-const Goals = lazy(() => import("@/pages/money/Goals"));
-const Investments = lazy(() => import("@/pages/money/Investments"));
-const TasksLayout = lazy(() => import("@/pages/tasks/TasksLayout"));
-const Today = lazy(() => import("@/pages/tasks/Today"));
-const Upcoming = lazy(() => import("@/pages/tasks/Upcoming"));
-const Inbox = lazy(() => import("@/pages/tasks/Inbox"));
-const Project = lazy(() => import("@/pages/tasks/Project"));
-const LabelView = lazy(() => import("@/pages/tasks/LabelView"));
-const NotesLayout = lazy(() => import("@/pages/notes/NotesLayout"));
-const NotesList = lazy(() => import("@/pages/notes/NotesList"));
-const NoteEditor = lazy(() => import("@/pages/notes/NoteEditor"));
-const ChecklistsList = lazy(() => import("@/pages/checklists/ChecklistsList"));
-const ChecklistDetail = lazy(
-  () => import("@/pages/checklists/ChecklistDetail"),
-);
-const MemoriesList = lazy(() => import("@/pages/memories/MemoriesList"));
+const Admin = lazyWithRetry(() => import("@/pages/Admin"));
+const Dashboard = lazyWithRetry(() => import("@/pages/Dashboard"));
+const MoneyLayout = lazyWithRetry(() => import("@/pages/money/MoneyLayout"));
+const MoneyOverview = lazyWithRetry(() => import("@/pages/money/MoneyOverview"));
+const Transactions = lazyWithRetry(() => import("@/pages/money/Transactions"));
+const Recurring = lazyWithRetry(() => import("@/pages/money/Recurring"));
+const Budgets = lazyWithRetry(() => import("@/pages/money/Budgets"));
+const Loans = lazyWithRetry(() => import("@/pages/money/Loans"));
+const Goals = lazyWithRetry(() => import("@/pages/money/Goals"));
+const Investments = lazyWithRetry(() => import("@/pages/money/Investments"));
+const TasksLayout = lazyWithRetry(() => import("@/pages/tasks/TasksLayout"));
+const Today = lazyWithRetry(() => import("@/pages/tasks/Today"));
+const Upcoming = lazyWithRetry(() => import("@/pages/tasks/Upcoming"));
+const Inbox = lazyWithRetry(() => import("@/pages/tasks/Inbox"));
+const Project = lazyWithRetry(() => import("@/pages/tasks/Project"));
+const LabelView = lazyWithRetry(() => import("@/pages/tasks/LabelView"));
+const NotesLayout = lazyWithRetry(() => import("@/pages/notes/NotesLayout"));
+const NotesList = lazyWithRetry(() => import("@/pages/notes/NotesList"));
+const NoteEditor = lazyWithRetry(() => import("@/pages/notes/NoteEditor"));
+const ChecklistsList = lazyWithRetry(() => import("@/pages/checklists/ChecklistsList"));
+const ChecklistDetail = lazyWithRetry(() => import("@/pages/checklists/ChecklistDetail"));
+const MemoriesList = lazyWithRetry(() => import("@/pages/memories/MemoriesList"));
 
 function FullScreenLoader() {
   return (
