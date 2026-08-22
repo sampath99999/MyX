@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Plus } from "lucide-react";
-import { m, useReducedMotion } from "@/components/landing/motion";
+import { m, useStillMotion } from "@/components/landing/motion";
 import { cn } from "@/lib/utils";
 
 /*
@@ -54,7 +54,7 @@ const QUESTIONS: FaqItem[] = [
  */
 export default function Faq({ items = QUESTIONS }: { items?: FaqItem[] }) {
   const [open, setOpen] = useState<number | null>(0);
-  const still = useReducedMotion();
+  const still = useStillMotion();
 
   return (
     <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border">

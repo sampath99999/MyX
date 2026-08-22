@@ -12,7 +12,7 @@ import {
   Search,
   CalendarClock,
 } from "lucide-react";
-import { m, useReducedMotion } from "@/components/landing/motion";
+import { m, useStillMotion } from "@/components/landing/motion";
 import { cn } from "@/lib/utils";
 
 /*
@@ -416,7 +416,7 @@ export default function Showcase() {
   const [pinned, setPinned] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const onScreen = useInView(ref, { amount: 0.35 });
-  const still = useReducedMotion();
+  const still = useStillMotion();
 
   /*
     The timer only exists while the section is visible and nobody has taken

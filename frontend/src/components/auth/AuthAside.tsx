@@ -9,7 +9,7 @@ import {
   TrendingUp,
   ArrowUpRight,
 } from "lucide-react";
-import { m, useReducedMotion } from "@/components/landing/motion";
+import { m, useStillMotion } from "@/components/landing/motion";
 import { cn } from "@/lib/utils";
 
 /*
@@ -270,7 +270,7 @@ const SLIDES = [
 
 export default function AuthAside() {
   const [index, setIndex] = useState(0);
-  const still = useReducedMotion();
+  const still = useStillMotion();
 
   useEffect(() => {
     if (still) return;

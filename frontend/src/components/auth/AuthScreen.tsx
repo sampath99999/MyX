@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import PublicHeader, { PUBLIC_HEADER_OFFSET } from "@/components/PublicHeader";
 import AuthAside from "@/components/auth/AuthAside";
-import { m, WordReveal, useReducedMotion } from "@/components/landing/motion";
+import { m, WordReveal, useStillMotion } from "@/components/landing/motion";
 import { cn } from "@/lib/utils";
 
 /*
@@ -39,7 +39,7 @@ export default function AuthScreen({
   /** Off for screens that are already inside a session. */
   aside?: boolean;
 }) {
-  const still = useReducedMotion();
+  const still = useStillMotion();
 
   /** Opt-out fade, used for the three pieces of text above the form. */
   const fade = (delay: number, y = 0) =>

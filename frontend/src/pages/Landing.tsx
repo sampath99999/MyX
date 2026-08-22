@@ -22,7 +22,14 @@ import PublicFooter from "@/components/PublicFooter";
 import HeroVisual from "@/components/landing/HeroVisual";
 import Showcase from "@/components/landing/Showcase";
 import Faq from "@/components/landing/Faq";
-import { MotionProvider, Reveal, Stagger, WordReveal, m } from "@/components/landing/motion";
+import {
+  MotionProvider,
+  Reveal,
+  Stagger,
+  WordReveal,
+  m,
+  useStillMotion,
+} from "@/components/landing/motion";
 import { cn } from "@/lib/utils";
 
 /*
@@ -189,6 +196,23 @@ const NAV_LINKS = [
 
 export default function Landing() {
   const { user } = useAuth();
+  const still = useStillMotion();
+
+  /*
+    An entrance, or nothing at all.
+
+    These four sit above the fold and each one starts at `opacity: 0`, which
+    means the first thing a visitor sees depends on an animation running. On a
+    phone that turned out to be a real dependency rather than a theoretical one,
+    so below `md` they render finished — no `initial`, nothing to wait for.
+  */
+  const enter = (
+    initial: { opacity: number; y?: number },
+    transition: { duration: number; delay?: number },
+  ) =>
+    still
+      ? {}
+      : { initial, animate: { opacity: 1, y: 0 }, transition };
 
   const primaryCta = user
     ? { to: "/dashboard", label: "Open your dashboard" }
@@ -221,9 +245,7 @@ export default function Landing() {
           <div className="relative mx-auto max-w-6xl px-5 pb-8 pt-24 sm:px-6 sm:pt-36">
             <div className="mx-auto max-w-3xl text-center">
               <m.p
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
+                {...enter({ opacity: 0, y: 10 }, { duration: 0.5 })}
                 /*
                   280px of a 335px content column on a 375px phone, which made
                   the first thing on the page a near-full-width grey bar sitting
@@ -259,9 +281,7 @@ export default function Landing() {
               </h1>
 
               <m.p
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.55 }}
+                {...enter({ opacity: 0, y: 12 }, { duration: 0.6, delay: 0.55 })}
                 className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg"
               >
                 Your money, your to-dos, your notes and the days worth remembering — in one calm app
@@ -269,9 +289,7 @@ export default function Landing() {
               </m.p>
 
               <m.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.68 }}
+                {...enter({ opacity: 0, y: 12 }, { duration: 0.6, delay: 0.68 })}
                 className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
               >
                 <Link
@@ -290,9 +308,7 @@ export default function Landing() {
               </m.div>
 
               <m.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.85 }}
+                {...enter({ opacity: 0 }, { duration: 0.6, delay: 0.85 })}
                 className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground"
               >
                 {["No card, ever", "Nothing to install", "Delete it all in one tap"].map((t) => (

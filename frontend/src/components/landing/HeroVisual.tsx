@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useScroll, useSpring, useTransform } from "motion/react";
-import { m, useReducedMotion } from "@/components/landing/motion";
+import { m, useStillMotion } from "@/components/landing/motion";
 import AppPreview from "@/components/landing/AppPreview";
 
 /*
@@ -19,7 +19,7 @@ import AppPreview from "@/components/landing/AppPreview";
 
 export default function HeroVisual() {
   const ref = useRef<HTMLDivElement>(null);
-  const still = useReducedMotion();
+  const still = useStillMotion();
 
   const { scrollYProgress } = useScroll({
     target: ref,

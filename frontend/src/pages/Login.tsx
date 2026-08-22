@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AuthScreen, { AuthError } from "@/components/auth/AuthScreen";
 import VerifyCodeForm from "@/components/auth/VerifyCodeForm";
-import { m, useReducedMotion } from "@/components/landing/motion";
+import { m, useStillMotion } from "@/components/landing/motion";
 import { useAuth } from "@/lib/auth";
 import { ApiError, type User } from "@/lib/api";
 
@@ -35,7 +35,7 @@ type Step = "credentials" | "verify";
 export default function Login() {
   const { login, register, enterApp, verificationRequired } = useAuth();
   const navigate = useNavigate();
-  const still = useReducedMotion();
+  const still = useStillMotion();
 
   // The landing page's "Create your account" links here with ?mode=register, so
   // the visitor lands on the sign-up form rather than having to find the toggle.

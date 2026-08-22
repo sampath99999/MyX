@@ -1,5 +1,5 @@
 import { motion as m, useReducedMotion, type Variants } from "motion/react";
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /*
@@ -21,6 +21,45 @@ import { cn } from "@/lib/utils";
   animation. A page that slides six sections in is unpleasant for someone who
   set that switch precisely to stop things sliding.
 */
+
+/*
+  When to render with no animation at all.
+
+  Two cases, one query. The OS-level reduced-motion switch is the obvious one.
+  The second is phones, and it was learned the hard way: the landing page
+  prerenders 25 elements at `opacity: 0` and relies on an entrance animation to
+  reveal each of them. That is a fine trade on a desktop and a bad one on a
+  phone, because it makes *visibility* depend on the main thread being free. It
+  was not — a hero full of animated 130px blurs had saturated the compositor on
+  iOS — and the result was a page that was entirely present in the HTML and
+  looked like it had failed to load.
+
+  The blur is fixed, but the dependency was the deeper problem: content should
+  not be invisible because an animation is late. Below `md` everything renders
+  in its final state, immediately.
+
+  `useSyncExternalStore` rather than `useState` + `useEffect` because these
+  pages hydrate prerendered markup. The server snapshot is `false`, which is
+  what the prerender was built with, so hydration matches; React then re-renders
+  with the real value on the client. Reading `matchMedia` during the first
+  render instead would be a hydration mismatch on every phone.
+*/
+const STILL_QUERY = "(max-width: 767px), (prefers-reduced-motion: reduce)";
+
+function subscribeToStill(onChange: () => void) {
+  const mq = window.matchMedia(STILL_QUERY);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+
+/** True when this device should be shown the finished state, not the journey. */
+export function useStillMotion() {
+  return useSyncExternalStore(
+    subscribeToStill,
+    () => window.matchMedia(STILL_QUERY).matches,
+    () => false,
+  );
+}
 
 /** The house easing: fast out of the gate, long settle. */
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -58,7 +97,7 @@ export function Reveal({
   y?: number;
   as?: never;
 }) {
-  const still = useReducedMotion();
+  const still = useStillMotion();
   if (still) return <div className={className}>{children}</div>;
   return (
     <m.div
@@ -89,7 +128,7 @@ export function Stagger({
   className?: string;
   gap?: number;
 }) {
-  const still = useReducedMotion();
+  const still = useStillMotion();
   if (still) return <div className={className}>{children}</div>;
   return (
     <m.div
@@ -111,7 +150,7 @@ Stagger.Item = function StaggerItem({
   children: ReactNode;
   className?: string;
 }) {
-  const still = useReducedMotion();
+  const still = useStillMotion();
   if (still) return <div className={className}>{children}</div>;
   return (
     <m.div className={className} variants={fadeUp}>
@@ -139,7 +178,7 @@ export function WordReveal({
   wordClassName?: string;
   delay?: number;
 }) {
-  const still = useReducedMotion();
+  const still = useStillMotion();
   const words = text.split(" ");
 
   if (still) return <span className={cn(className, wordClassName)}>{text}</span>;
