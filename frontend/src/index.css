@@ -472,11 +472,25 @@
        which made the hero look like it had corner banners stuck on it. */
     filter: blur(130px);
     opacity: 0.42;
-    will-change: transform;
   }
   .light .aurora {
     opacity: 0.26;
     filter: blur(110px);
+  }
+
+  /*
+    `will-change` belongs on the blobs that actually move.
+
+    It was on `.aurora` itself, which promoted every one of them to its own
+    compositor layer and held that backing store for the life of the page —
+    including the static ones, and including on devices that were never going
+    to run the animation. A 700px layer at a 130px blur radius is an expensive
+    thing to keep alive for nothing.
+  */
+  .drift-a,
+  .drift-b,
+  .drift-c {
+    will-change: transform;
   }
 
   @keyframes drift-a {
@@ -496,6 +510,44 @@
   .drift-a { animation: drift-a 26s ease-in-out infinite; }
   .drift-b { animation: drift-b 32s ease-in-out infinite; }
   .drift-c { animation: drift-c 38s ease-in-out infinite; }
+
+  /*
+    Phones get a small, static blur. This is why the home page hung on an
+    iPhone while Android was fine.
+
+    The hero renders three of these, and measured on a 375px viewport each one
+    is *wider than the screen* — 716px, 636px and 479px — every one blurred at
+    a 130px radius. That is 6.3 screens' worth of blurred pixels. A static blur
+    is rasterised once and then merely composited, which is affordable; these
+    were animated with `scale()`, and scaling a blurred layer re-rasterises the
+    blur on every frame, forever.
+
+    Blink downsamples large blurs. WebKit rasterises them at full resolution,
+    and iOS evicts tiles hard under memory pressure — which is both browsers on
+    an iPhone and neither on an Android. The page stalls, tiles below the fold
+    come back black, and every element waiting on a JavaScript entrance
+    animation stays at opacity 0 because the main thread never gets a frame.
+    It reads as "the site did not load".
+
+    At this size the blob is twice the width of the screen, so most of the soft
+    edge the big radius was buying is off-screen anyway.
+  */
+  @media (max-width: 767px) {
+    .aurora {
+      filter: blur(50px);
+      opacity: 0.32;
+    }
+    .light .aurora {
+      filter: blur(45px);
+      opacity: 0.2;
+    }
+    .drift-a,
+    .drift-b,
+    .drift-c {
+      animation: none;
+      will-change: auto;
+    }
+  }
 
   /*
     A hairline that is brighter at the top than the bottom, which is what makes
@@ -605,7 +657,7 @@
   @media (prefers-reduced-motion: reduce) {
     .animate-in-up { animation: none; }
     .skeleton::after { animation: none; }
-    .drift-a, .drift-b, .drift-c, .marquee-track { animation: none; }
+    .drift-a, .drift-b, .drift-c, .marquee-track { animation: none; will-change: auto; }
   }
 }
 
