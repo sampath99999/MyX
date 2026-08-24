@@ -707,7 +707,19 @@ export const api = {
     request<{ project: Project }>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
   updateProject: (
     id: number,
-    body: Partial<{ name: string; color: string; archived: boolean; view: "list" | "board" }>,
+    /*
+      `space_id` moves the project to another space — and takes its tasks with
+      it, server-side. Tasks carry their own space_id, so moving one without
+      the other files them under a project in one space while they are still
+      counted against the other.
+    */
+    body: Partial<{
+      name: string;
+      color: string;
+      archived: boolean;
+      view: "list" | "board";
+      space_id: number;
+    }>,
   ) =>
     request<{ project: Project }>(`/api/projects/${id}`, {
       method: "PATCH",

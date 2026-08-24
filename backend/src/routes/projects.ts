@@ -102,10 +102,61 @@ projects.patch("/:id", async (c) => {
   const view = body?.view === "board" || body?.view === "list" ? body.view : project.view;
   if (!name) throw new HTTPException(400, { message: "Project name is required" });
 
-  const updated = await c.env.DB.prepare(
-    "UPDATE projects SET name = ?, color = ?, archived = ?, view = ? WHERE id = ? AND user_id = ? RETURNING *",
-  )
-    .bind(name, color, archived, view, id, user.sub)
+  /*
+    Moving a project to another space.
+
+    The catch is that tasks carry their own space_id as well as their
+    project_id — the Today, Upcoming and Inbox views filter on the task's
+    space, not on its project's. So moving the project alone would leave every
+    task behind: filed under a project in the new space while still counted
+    against the old one, visible in neither space's list in the way anyone
+    would expect. The tasks move with it, in the same batch, so there is no
+    window in which the two disagree.
+  */
+  const movingTo = body?.space_id != null ? Number(body.space_id) : null;
+  if (movingTo != null) {
+    if (!Number.isInteger(movingTo))
+      throw new HTTPException(400, { message: "space_id must be an integer" });
+
+    // Someone else's space would otherwise be a place to file your own work
+    // into — and, worse, a way to make it appear in their lists.
+    const space = await c.env.DB.prepare("SELECT id FROM spaces WHERE id = ? AND user_id = ?")
+      .bind(movingTo, user.sub)
+      .first();
+    if (!space) throw new HTTPException(404, { message: "Space not found" });
+  }
+
+  const space_id = movingTo ?? project.space_id;
+  const changingSpace = space_id !== project.space_id;
+
+  // Land it at the end of the destination rather than colliding with whatever
+  // already holds its old position there.
+  let position = project.position;
+  if (changingSpace) {
+    const posRow = await c.env.DB.prepare(
+      "SELECT COALESCE(MAX(position), -1) + 1 AS pos FROM projects WHERE user_id = ? AND space_id = ?",
+    )
+      .bind(user.sub, space_id)
+      .first<{ pos: number }>();
+    position = posRow?.pos ?? 0;
+  }
+
+  const statements = [
+    c.env.DB.prepare(
+      "UPDATE projects SET name = ?, color = ?, archived = ?, view = ?, space_id = ?, position = ? WHERE id = ? AND user_id = ?",
+    ).bind(name, color, archived, view, space_id, position, id, user.sub),
+  ];
+  if (changingSpace) {
+    statements.push(
+      c.env.DB.prepare(
+        "UPDATE tasks SET space_id = ? WHERE project_id = ? AND user_id = ?",
+      ).bind(space_id, id, user.sub),
+    );
+  }
+  await c.env.DB.batch(statements);
+
+  const updated = await c.env.DB.prepare("SELECT * FROM projects WHERE id = ? AND user_id = ?")
+    .bind(id, user.sub)
     .first<ProjectRow>();
   return c.json({ project: serialize(updated!) });
 });

@@ -126,6 +126,112 @@ export function Menu({
   );
 }
 
+/*
+  The same menu, opened at the pointer instead of under a trigger.
+
+  Right-click needs a position, not an anchor, so this takes coordinates and
+  reuses everything else — the portal, the viewport clamping, Escape, arrow
+  keys, and MenuItem's "selecting closes it" behaviour, which only works
+  because the context below is the same one `Menu` provides.
+
+  A right-click menu can never be the only way to reach an action: it is
+  invisible until tried, and a touchscreen has no right-click at all. Every
+  caller pairs it with an ordinary button that opens the same items.
+*/
+export function useContextMenu() {
+  const [at, setAt] = React.useState<{ x: number; y: number } | null>(null);
+  const openAt = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setAt({ x: e.clientX, y: e.clientY });
+  }, []);
+  const close = React.useCallback(() => setAt(null), []);
+  return { at, openAt, close };
+}
+
+export function ContextMenu({
+  at,
+  onClose,
+  children,
+  className,
+}: {
+  at: { x: number; y: number } | null;
+  onClose: () => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!at) {
+      setPos(null);
+      return;
+    }
+    const el = menuRef.current;
+    const width = el?.offsetWidth ?? 224;
+    const height = el?.offsetHeight ?? 0;
+    // Clamp inside the viewport. Opening near the bottom-right corner would
+    // otherwise put half the menu off-screen, which is where a list's last
+    // row usually is.
+    const left = Math.max(8, Math.min(at.x, window.innerWidth - width - 8));
+    const top = Math.max(8, Math.min(at.y, window.innerHeight - height - 8));
+    setPos({ top, left });
+  }, [at]);
+
+  React.useEffect(() => {
+    if (!at) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const items = menuRef.current?.querySelectorAll<HTMLElement>("[data-menu-item]");
+      if (!items?.length) return;
+      e.preventDefault();
+      const list = Array.from(items);
+      const index = list.indexOf(document.activeElement as HTMLElement);
+      const next = e.key === "ArrowDown" ? index + 1 : index - 1;
+      list[(next + list.length) % list.length]?.focus();
+    };
+    // A second right-click elsewhere should move the menu, not leave two ideas
+    // of where it is.
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("contextmenu", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("contextmenu", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [at, onClose]);
+
+  if (!at || typeof document === "undefined") return null;
+
+  return createPortal(
+    <MenuContext.Provider value={{ close: onClose }}>
+      <div
+        ref={menuRef}
+        role="menu"
+        style={{ top: pos?.top ?? at.y, left: pos?.left ?? at.x }}
+        className={cn(
+          "animate-in-up fixed z-[90] min-w-56 overflow-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-pop",
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </MenuContext.Provider>,
+    document.body,
+  );
+}
+
 export function MenuItem({
   icon: Icon,
   destructive,

@@ -4,16 +4,17 @@ import {
   Sun,
   Inbox,
   CalendarRange,
-  Hash,
   Plus,
   Layers,
   Tag,
+  Hash,
   HelpCircle,
   ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api, type Space, type Project, type Label } from "@/lib/api";
 import NewProjectDialog from "@/components/tasks/NewProjectDialog";
+import ProjectRow from "@/components/tasks/ProjectRow";
 import NewSpaceDialog from "@/components/tasks/NewSpaceDialog";
 import TasksHelpDialog from "@/components/tasks/TasksHelpDialog";
 import { Menu, MenuItem, MenuLabel } from "@/components/ui/menu";
@@ -219,19 +220,13 @@ export default function TasksLayout() {
               </p>
             ) : (
               projects.map((p) => (
-                <NavLink
+                <ProjectRow
                   key={p.id}
-                  to={`/tasks/project/${p.id}`}
-                  className={({ isActive }) => navItem(isActive)}
-                >
-                  <Hash className="size-4 shrink-0" style={{ color: p.color }} />
-                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  {p.open_count > 0 && (
-                    <span className="tnum shrink-0 text-[10px] font-medium text-muted-foreground">
-                      {p.open_count}
-                    </span>
-                  )}
-                </NavLink>
+                  project={p}
+                  spaces={spaces}
+                  className={navItem}
+                  onChanged={reloadAll}
+                />
               ))
             )}
           </div>
@@ -306,6 +301,68 @@ export default function TasksLayout() {
                 {v.count > 0 && <span className="tnum">{v.count}</span>}
               </NavLink>
             ))}
+
+            {/*
+              Projects and labels, on a phone.
+
+              The rail that holds these is `hidden md:flex`, and this strip only
+              ever carried the three views — so on a phone you could create a
+              project from the button above and then have no way whatsoever to
+              open it, and labels did not exist at all. Half the module was
+              unreachable on the device the app is mostly used on.
+
+              They join the same scroller rather than getting rows of their own:
+              they are more destinations, the strip already scrolls sideways,
+              and a phone has no vertical space to spend on a second bar. The
+              dividers are what stop it reading as one undifferentiated run of
+              pills.
+            */}
+            {projects.length > 0 && (
+              <>
+                <span aria-hidden className="mx-0.5 my-1.5 w-px shrink-0 bg-border" />
+                {projects.map((p) => (
+                  <NavLink
+                    key={p.id}
+                    to={`/tasks/project/${p.id}`}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[0.8125rem] font-medium transition-colors",
+                        isActive
+                          ? "border-transparent bg-foreground text-background"
+                          : "border-border text-muted-foreground",
+                      )
+                    }
+                  >
+                    <Hash className="size-3.5 shrink-0" style={{ color: p.color }} />
+                    <span className="max-w-[9rem] truncate">{p.name}</span>
+                    {p.open_count > 0 && <span className="tnum">{p.open_count}</span>}
+                  </NavLink>
+                ))}
+              </>
+            )}
+
+            {labels.length > 0 && (
+              <>
+                <span aria-hidden className="mx-0.5 my-1.5 w-px shrink-0 bg-border" />
+                {labels.map((l) => (
+                  <NavLink
+                    key={l.id}
+                    to={`/tasks/label/${l.id}`}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[0.8125rem] font-medium transition-colors",
+                        isActive
+                          ? "border-transparent bg-foreground text-background"
+                          : "border-border text-muted-foreground",
+                      )
+                    }
+                  >
+                    <Tag className="size-3.5 shrink-0" style={{ color: l.color }} />
+                    <span className="max-w-[9rem] truncate">{l.name}</span>
+                  </NavLink>
+                ))}
+              </>
+            )}
           </div>
         </div>
 
