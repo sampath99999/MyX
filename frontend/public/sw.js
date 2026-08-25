@@ -8,9 +8,16 @@
   Everything else — every /api/* call, every POST — falls straight through to
   the network untouched.
 
-  Bump CACHE to force every client to drop its old entries on the next visit.
+  CACHE carries a build id stamped in by vite.config.ts. That is load-bearing in
+  two ways, and both were broken while it was the hardcoded "myx-v1" it started
+  as: the activate handler below can only drop stale entries when the name it
+  compares against actually changes, and — the expensive one — a browser only
+  installs a new worker when this file's *bytes* differ. Identical bytes every
+  deploy meant `updatefound` never fired, so the whole update-and-reload path in
+  src/lib/pwa.ts was dead code and clients kept running old JS against new
+  assets until someone reloaded by hand.
 */
-const CACHE = "myx-v1";
+const CACHE = "myx-__BUILD_ID__";
 
 // The offline shell. Vite fingerprints the JS/CSS, so those are picked up at
 // runtime instead — hashed filenames are immutable and safe to cache forever.
