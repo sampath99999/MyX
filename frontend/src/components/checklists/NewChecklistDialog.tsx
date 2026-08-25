@@ -19,11 +19,28 @@ const EMOJIS = ["✅", "🌙", "☀️", "🚪", "🎒", "🛒", "🧹", "💊",
 export default function NewChecklistDialog({
   onCreated,
   trigger,
+  open: controlledOpen,
+  onOpenChange: onControlledChange,
 }: {
   onCreated?: (checklist: Checklist) => void;
-  trigger: ReactNode;
+  trigger?: ReactNode;
+  /** Controlled open. Omit to let the dialog manage itself. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+/*
+  `open`/`onOpenChange` are optional. Left out, the dialog owns its own state and
+  is driven by its trigger, which is how every existing caller uses it. Passed
+  in, the caller drives it and the trigger becomes optional — which is what lets
+  the app-wide Add menu open this form on arrival (see lib/addIntent.ts) without
+  every page growing a hidden button to click.
+*/
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledOpen(next);
+    onControlledChange?.(next);
+  };
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("✅");
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +80,7 @@ export default function NewChecklistDialog({
         if (!v) reset();
       }}
     >
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New checklist</DialogTitle>

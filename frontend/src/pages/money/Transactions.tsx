@@ -19,6 +19,7 @@ import {
   type TransactionTotals,
 } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
+import { useAddIntent } from "@/lib/addIntent";
 import { cn } from "@/lib/utils";
 
 /*
@@ -64,6 +65,9 @@ export default function Transactions() {
   const [categories, setCategories] = useState<{ category: string; n: number }[]>([]);
   const [query, setQuery] = useState<TransactionQuery>({});
   const [loadingMore, setLoadingMore] = useState(false);
+  /* Set when the Add menu navigated here asking for the form. */
+  const [addOpen, setAddOpen] = useState(false);
+  useAddIntent(() => setAddOpen(true));
 
   /*
     The details modal is driven by the URL, not by state: ?view_id=N is the same
@@ -238,6 +242,9 @@ export default function Transactions() {
             />
             <AddTransactionDialog
               onCreated={reload}
+              // Opened directly when the app-wide Add menu sent us here.
+              open={addOpen || undefined}
+              onOpenChange={setAddOpen}
               trigger={
                 <Button>
                   <Plus />

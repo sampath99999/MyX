@@ -18,6 +18,7 @@ import TargetsDialog from "@/components/meals/TargetsDialog";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError, MEAL_LABELS, type MealDay, type MealName } from "@/lib/api";
+import { useAddIntent } from "@/lib/addIntent";
 
 /*
   The day.
@@ -32,6 +33,22 @@ import { api, ApiError, MEAL_LABELS, type MealDay, type MealName } from "@/lib/a
 */
 
 const iso = (d: Date) => d.toLocaleDateString("en-CA");
+
+/**
+ * Which meal the clock suggests.
+ *
+ * Arriving from the Add menu means "record what I just ate", and at 1pm that is
+ * lunch. Guessing costs nothing when wrong — the picker's title says which meal
+ * it is filling and every section has its own Add button — and asking would put
+ * a question between someone and the thing they came to do.
+ */
+function mealForNow(now = new Date()): MealName {
+  const hour = now.getHours();
+  if (hour < 11) return "breakfast";
+  if (hour < 16) return "lunch";
+  if (hour < 21) return "dinner";
+  return "snack";
+}
 
 function dayLabel(date: string): string {
   const today = iso(new Date());
@@ -51,6 +68,12 @@ export default function MealsToday() {
   const [day, setDay] = useState<MealDay | null>(null);
   const [picker, setPicker] = useState<MealName | null>(null);
   const [targetsOpen, setTargetsOpen] = useState(false);
+
+  /* Sent here by the Add menu: open the picker on whichever meal it is now. */
+  useAddIntent(() => {
+    setDate(iso(new Date()));
+    setPicker(mealForNow());
+  });
 
   const load = useCallback(async () => {
     setDay(await api.mealDay(date));

@@ -8,8 +8,7 @@ import AccountMenu from "@/components/AccountMenu";
 import { NAV_GROUPS, type NavItem } from "@/components/navigation";
 import RailLabel from "@/components/RailLabel";
 import CommandPalette from "@/components/CommandPalette";
-import AddTransactionDialog from "@/components/AddTransactionDialog";
-import { announceDataChanged } from "@/lib/useAuthenticatedLoad";
+import AddMenu from "@/components/AddMenu";
 import { cn } from "@/lib/utils";
 
 /*
@@ -88,6 +87,7 @@ function NavRow({
 export default function AppLayout() {
   const { user } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === "1";
@@ -285,24 +285,26 @@ export default function AppLayout() {
         </main>
 
         {/*
-          The one write worth a permanent target on a phone.
+          The one control worth a permanent target on a phone.
+
+          It opens the same chooser as the header button rather than jumping
+          straight to a transaction — six things are worth recording now, and a
+          + that could only do one of them was quietly misleading.
 
           It used to sit at bottom-20, clearing a tab bar that is no longer
           there — see MobileNav for why it went. Down at bottom-5 it is easier
           to reach and no longer stacked on top of another piece of chrome.
         */}
-        <AddTransactionDialog
-          onCreated={announceDataChanged}
-          trigger={
-            <button
-              aria-label="Add a transaction"
-              className="fixed bottom-5 right-4 z-30 flex size-14 items-center justify-center rounded-full bg-foreground text-background shadow-pop transition-transform active:scale-95 md:hidden"
-              style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
-            >
-              <Plus className="size-6" />
-            </button>
-          }
-        />
+        <button
+          onClick={() => setAddOpen(true)}
+          aria-label="Add"
+          className="fixed bottom-5 right-4 z-30 flex size-14 items-center justify-center rounded-full bg-foreground text-background shadow-pop transition-transform active:scale-95 md:hidden"
+          style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+        >
+          <Plus className="size-6" />
+        </button>
+
+        <AddMenu open={addOpen} onOpenChange={setAddOpen} />
       </div>
 
       <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />

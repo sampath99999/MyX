@@ -5,6 +5,7 @@ import { SkeletonRows } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, type NoteListItem } from "@/lib/api";
+import { useAddIntent } from "@/lib/addIntent";
 import { useNotesContext, timeAgo } from "./context";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,12 @@ export default function NotesList() {
     }
     return { icon: StickyNote, label: "All Notes" };
   }, [ctx.view, ctx.tag, ctx.folderId, ctx.folders]);
+
+  /* The Add menu sends people here to write; a note has no form to fill in, so
+     the right response is to make one and open it. */
+  useAddIntent(() => {
+    void newNote();
+  });
 
   async function newNote() {
     setCreating(true);

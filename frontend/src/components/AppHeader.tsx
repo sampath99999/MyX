@@ -1,8 +1,8 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Search, Plus } from "lucide-react";
-import { announceDataChanged } from "@/lib/useAuthenticatedLoad";
 import NotificationsBell from "@/components/NotificationsBell";
-import AddTransactionDialog from "@/components/AddTransactionDialog";
+import AddMenu from "@/components/AddMenu";
 import ThemeToggle from "@/components/ThemeToggle";
 import { LogoMark } from "@/components/Logo";
 import MobileNav from "@/components/MobileNav";
@@ -45,6 +45,7 @@ function sectionTitle(pathname: string) {
 
 export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { pathname } = useLocation();
+  const [addOpen, setAddOpen] = useState(false);
   /*
     ⌘ on a Mac, Ctrl everywhere else. Resolved once at render rather than
     guessed in the copy, because "Ctrl K" printed on a Mac reads as a bug.
@@ -117,22 +118,26 @@ export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }
         {/*
           Quick add was on the dashboard only, which is the one screen where you
           are least likely to be when you remember an expense. It is the app's
-          single most-used write, so it belongs next to search — reachable from
-          anywhere, and never in the way. On a phone it is the floating button
-          in the shell instead, so this hides below md.
+          most-used write, so it belongs next to search — reachable from
+          anywhere, and never in the way.
+
+          It opens a chooser rather than a transaction form. The button said Add
+          and could only add one of the six things the app records, which is a
+          promise it stopped keeping some modules ago.
+
+          Present on a phone too, where it collapses to the icon alone: the
+          right-hand corner has little room, and "Add" next to a + earns none of
+          the width it costs.
         */}
-        <AddTransactionDialog
-          onCreated={announceDataChanged}
-          trigger={
-            <button
-              title="Add a transaction"
-              className="mr-1.5 hidden h-9 items-center gap-1.5 rounded-lg bg-foreground px-3 text-[0.8125rem] font-medium text-background transition-opacity hover:opacity-90 md:flex"
-            >
-              <Plus className="size-4" />
-              Add
-            </button>
-          }
-        />
+        <button
+          onClick={() => setAddOpen(true)}
+          title="Add"
+          aria-label="Add"
+          className="mr-1.5 flex h-9 items-center gap-1.5 rounded-lg bg-foreground px-2.5 text-[0.8125rem] font-medium text-background transition-opacity hover:opacity-90 md:px-3"
+        >
+          <Plus className="size-4" />
+          <span className="hidden md:inline">Add</span>
+        </button>
 
         {/*
           Theme and the account are in the drawer on a phone, so they are not
@@ -145,6 +150,8 @@ export default function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }
         </span>
         <NotificationsBell />
       </div>
+
+      <AddMenu open={addOpen} onOpenChange={setAddOpen} />
     </header>
   );
 }

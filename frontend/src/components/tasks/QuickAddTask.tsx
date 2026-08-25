@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, Flag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, type Label } from "@/lib/api";
@@ -27,6 +27,7 @@ export default function QuickAddTask({
   onCreated,
   onLabelsChanged,
   placeholder = "Add a task…  (try: tomorrow !p1 #home)",
+  autoFocus = false,
 }: {
   spaceId?: number;
   projectId?: number | null;
@@ -36,12 +37,30 @@ export default function QuickAddTask({
   onCreated: () => void;
   onLabelsChanged?: () => void;
   placeholder?: string;
+  /** Focus the field on mount — see lib/addIntent.ts. */
+  autoFocus?: boolean;
 }) {
   const today = todayISO();
   const [title, setTitle] = useState("");
   const [due, setDue] = useState<string | null>(defaultDue);
   const [priority, setPriority] = useState(4);
   const [focused, setFocused] = useState(false);
+
+  /*
+    Focus on request, not on mount.
+
+    React's autoFocus attribute only fires when the input first mounts, and the
+    flag that asks for focus arrives a tick later — the Add menu navigates here
+    and the page reads the intent in an effect, by which time the field has
+    already mounted unfocused. So the focus is imperative and keyed on the prop.
+
+    A task is typed rather than filled in, so this field *is* the form; opening a
+    dialog around it would be ceremony with nothing in it.
+  */
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
   const [busy, setBusy] = useState(false);
 
   const preview = parseQuickAdd(title, today);
@@ -109,6 +128,7 @@ export default function QuickAddTask({
           onChange={(e) => setTitle(e.target.value)}
           onFocus={() => setFocused(true)}
           placeholder={placeholder}
+          ref={inputRef}
           /* 32px is a small thing to aim at, and this is the field the whole
              row exists for. */
           className="h-10 min-w-0 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground/60"

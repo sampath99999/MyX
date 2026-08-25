@@ -7,9 +7,13 @@ import { PageShell, PageHeader, Section, EmptyState } from "@/components/ui/page
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { api, type Task } from "@/lib/api";
 import { useTasksContext } from "./context";
+import { useAddIntent } from "@/lib/addIntent";
 
 export default function Today() {
   const ctx = useTasksContext();
+  /* The Add menu sends people here to type a task, so put the caret in the field. */
+  const [addRequested, setAddRequested] = useState(false);
+  useAddIntent(() => setAddRequested(true));
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -95,6 +99,7 @@ export default function Today() {
       />
 
       <QuickAddTask
+        autoFocus={addRequested}
         spaceId={targetSpace}
         defaultDue={ctx.today}
         labels={ctx.labels}

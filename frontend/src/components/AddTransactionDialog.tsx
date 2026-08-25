@@ -27,14 +27,31 @@ import { cn } from "@/lib/utils";
 export default function AddTransactionDialog({
   onCreated,
   trigger,
+  open: controlledOpen,
+  onOpenChange: onControlledChange,
   transaction,
 }: {
   onCreated?: () => void;
-  trigger: ReactNode;
+  trigger?: ReactNode;
+  /** Controlled open. Omit to let the dialog manage itself. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   transaction?: Transaction;
 }) {
   const editing = transaction !== undefined;
-  const [open, setOpen] = useState(false);
+/*
+  `open`/`onOpenChange` are optional. Left out, the dialog owns its own state and
+  is driven by its trigger, which is how every existing caller uses it. Passed
+  in, the caller drives it and the trigger becomes optional — which is what lets
+  the app-wide Add menu open this form on arrival (see lib/addIntent.ts) without
+  every page growing a hidden button to click.
+*/
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledOpen(next);
+    onControlledChange?.(next);
+  };
   const [type, setType] = useState<"income" | "expense">(transaction?.type ?? "expense");
   const [amount, setAmount] = useState(transaction ? String(transaction.amount) : "");
   const [category, setCategory] = useState(transaction?.category ?? "");
@@ -109,7 +126,7 @@ export default function AddTransactionDialog({
         if (!v) reset();
       }}
     >
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit transaction" : "Add transaction"}</DialogTitle>

@@ -21,12 +21,29 @@ export default function NewMemoryDialog({
   memory,
   onSaved,
   trigger,
+  open: controlledOpen,
+  onOpenChange: onControlledChange,
 }: {
   memory?: Memory;
   onSaved?: () => void;
-  trigger: ReactNode;
+  trigger?: ReactNode;
+  /** Controlled open. Omit to let the dialog manage itself. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+/*
+  `open`/`onOpenChange` are optional. Left out, the dialog owns its own state and
+  is driven by its trigger, which is how every existing caller uses it. Passed
+  in, the caller drives it and the trigger becomes optional — which is what lets
+  the app-wide Add menu open this form on arrival (see lib/addIntent.ts) without
+  every page growing a hidden button to click.
+*/
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledOpen(next);
+    onControlledChange?.(next);
+  };
   const [title, setTitle] = useState(memory?.title ?? "");
   const [emoji, setEmoji] = useState(memory?.emoji ?? "✨");
   const [date, setDate] = useState(memory?.occurred_on ?? new Date().toISOString().slice(0, 10));
@@ -85,7 +102,7 @@ export default function NewMemoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{memory ? "Edit memory" : "New memory"}</DialogTitle>

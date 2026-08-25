@@ -7,12 +7,16 @@ import NewChecklistDialog from "@/components/checklists/NewChecklistDialog";
 import LoadError from "@/components/LoadError";
 import { api, type Checklist } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
+import { useAddIntent } from "@/lib/addIntent";
 import { cn } from "@/lib/utils";
 
 export default function ChecklistsList() {
   const navigate = useNavigate();
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
+  /* Set when the Add menu navigated here asking for the form. */
+  const [addOpen, setAddOpen] = useState(false);
+  useAddIntent(() => setAddOpen(true));
 
   const load = useCallback(async () => {
     const { checklists } = await api.listChecklists();
@@ -55,6 +59,8 @@ export default function ChecklistsList() {
         </div>
         <NewChecklistDialog
           onCreated={(c) => navigate(`/checklists/${c.id}`)}
+          open={addOpen || undefined}
+          onOpenChange={setAddOpen}
           trigger={
             <Button size="sm">
               <Plus className="h-4 w-4" />

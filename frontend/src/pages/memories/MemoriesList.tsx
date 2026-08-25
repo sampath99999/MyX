@@ -7,6 +7,7 @@ import NewMemoryDialog from "@/components/NewMemoryDialog";
 import LoadError from "@/components/LoadError";
 import { api, type Memory } from "@/lib/api";
 import { useAuthenticatedLoad } from "@/lib/useAuthenticatedLoad";
+import { useAddIntent } from "@/lib/addIntent";
 
 function formatDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("en-IN", {
@@ -22,6 +23,9 @@ export default function MemoriesList() {
   const [tag, setTag] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  /* Set when the Add menu navigated here asking for the form. */
+  const [addOpen, setAddOpen] = useState(false);
+  useAddIntent(() => setAddOpen(true));
 
   const load = useCallback(async () => {
     const [{ memories }, { tags }] = await Promise.all([
@@ -65,6 +69,8 @@ export default function MemoriesList() {
           </div>
           <NewMemoryDialog
             onSaved={reload}
+            open={addOpen || undefined}
+            onOpenChange={setAddOpen}
             trigger={
               <Button size="sm">
                 <Plus className="h-4 w-4" />
