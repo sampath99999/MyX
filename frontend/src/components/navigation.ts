@@ -5,6 +5,7 @@ import {
   StickyNote,
   Brain,
   ListChecks,
+  UtensilsCrossed,
 } from "lucide-react";
 
 /*
@@ -51,5 +52,16 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/memories", label: "Memories", icon: Brain },
       { to: "/checklists", label: "Checklists", icon: ListChecks },
     ],
+  },
+  /*
+    Health, with one module in it. A group of one looks odd next to two groups
+    of three, and it is still right: Meals is not a Personal thing in the sense
+    Notes and Memories are, and the roadmap has Water, Sleep and Medicines
+    arriving beside it. Filing it under Personal now would mean moving it later,
+    and a nav item that moves is one people have to find twice.
+  */
+  {
+    label: "Health",
+    items: [{ to: "/meals", label: "Meals", icon: UtensilsCrossed }],
   },
 ];

@@ -56,12 +56,13 @@ const SERVER_VERSION = "1.0.0";
  * merely wrong: money in the wrong unit and dates in the wrong format both
  * write bad data that looks fine until someone reads it months later.
  */
-const INSTRUCTIONS = `MyX is one person's private life manager: money, tasks, notes, memories and checklists.
+const INSTRUCTIONS = `MyX is one person's private life manager: money, tasks, notes, memories, checklists and a food log.
 
 Conventions that apply everywhere:
 - Money is in rupees (₹). 250.5 means ₹250.50. Never send paise.
 - Dates are YYYY-MM-DD. "Today" is the user's today, not UTC — ask or use myx_dashboard if it matters.
 - Every task belongs to a space (Personal, Work, ...). Call myx_spaces_list before creating one.
+- Food is logged in servings, not grams. Search the library first, then log the food's id with a quantity: three idlis is quantity 3 of Idli.
 
 Start with myx_dashboard for "how am I doing" or "what needs me today", and myx_search when you know what something is called but not which module it is in.
 

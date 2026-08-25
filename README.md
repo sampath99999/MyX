@@ -67,6 +67,11 @@ Single-user (you) today, built so family accounts can be added later.
 > - ✅ **Connections (MCP)** — MyX is an MCP server, so OpenClaw or any other
 >   assistant can read and write the account with an API key minted in Settings.
 >   See [docs/OPENCLAW.md](docs/OPENCLAW.md).
+> - ✅ **Meals** — a food log with a built-in library of ~165 everyday Indian
+>   foods in household portions (1 idli, 1 katori, 1 glass), calorie and macro
+>   targets derived from a profile or typed in, natural-language logging
+>   (`2 idli, 1 filter coffee`), copy-yesterday, trends, and a weight log
+>   charted against intake. Assistants can log food over MCP.
 >
 > The Money section uses tabs (Dashboard · Transactions · Recurring · Budgets · Loans ·
 > Goals · Investments). Tasks uses Spaces (top-level contexts) → Projects → Tasks. One
@@ -361,7 +366,7 @@ Money module (building out one sub-feature at a time):
 - Checklists — reusable templates you tick off repeatedly (see [§2](#2-modules-roadmap))
 - Memories, Journal/diary, Mood tracker, Bookmarks, Contacts (Personal module)
 - Habits, Calendar/events, Reminders, Goals *(cross-module)*, Projects *(cross-module)*
-- Health & Body module (Fitness, Meals, Water, Medicines, Sleep)
+- Health & Body module — ✅ Meals done; Fitness, Water, Medicines, Sleep remain
 - Life Admin module (Documents vault, Passwords, Shopping lists, Travel planner, Vehicle)
 - Per-module API key scopes (today a key is read-only or read-and-write across
   everything; a Tasks-only key would need finer scopes)

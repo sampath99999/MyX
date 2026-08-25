@@ -248,6 +248,8 @@ export const api = {
     }),
 
   dashboardSummary: () =>
+    // The caller's own date, because the server's "today" is UTC and the day
+    // this app lives in is not. See /api/dashboard/summary.
     request<{
       greeting: string;
       stats: {
@@ -278,7 +280,9 @@ export const api = {
         emoji: string | null;
         items: { id: number; title: string; done: boolean }[];
       } | null;
-    }>("/api/dashboard/summary"),
+      /** Today's food. target is null until Meals has been set up. */
+      meals: { kcal: number; protein: number; target: number | null };
+    }>(`/api/dashboard/summary?today=${new Date().toLocaleDateString("en-CA")}`),
 
   // ----- Search and notifications (the header) -----
 
@@ -898,7 +902,185 @@ export const api = {
     }),
 
   revokeApiKey: (id: number) => request<{ ok: true }>(`/api/keys/${id}`, { method: "DELETE" }),
+
+  /* ---- Meals ---- */
+
+  mealDay: (date?: string) =>
+    request<MealDay>(`/api/meals/day${date ? `?date=${date}` : ""}`),
+
+  logMeal: (body: {
+    food_id?: number;
+    quantity?: number;
+    meal: MealName;
+    logged_on?: string;
+    name?: string;
+    kcal?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+    serving_label?: string;
+  }) => request<{ entry: MealEntry }>("/api/meals/entries", { method: "POST", body: JSON.stringify(body) }),
+
+  updateMealEntry: (id: number, body: { quantity?: number; meal?: MealName }) =>
+    request<{ entry: MealEntry }>(`/api/meals/entries/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteMealEntry: (id: number) =>
+    request<{ ok: true }>(`/api/meals/entries/${id}`, { method: "DELETE" }),
+
+  copyMeals: (body: { from: string; to: string; meal?: MealName; as_meal?: MealName }) =>
+    request<{ copied: number }>("/api/meals/copy", { method: "POST", body: JSON.stringify(body) }),
+
+  mealTrends: (days = 30) => request<MealTrends>(`/api/meals/trends?days=${days}`),
+
+  mealTargets: () => request<MealTargetsResponse>("/api/meals/targets"),
+  setMealTargets: (body: { kcal?: number; protein?: number; carbs?: number; fat?: number } | { profile: NutritionProfile }) =>
+    request<{ targets: Macros; derived: boolean }>("/api/meals/targets", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  weightLog: (days = 90) => request<WeightLog>(`/api/meals/weight?days=${days}`),
+  logWeight: (body: { kg: number; logged_on?: string }) =>
+    request<{ day: string; kg: number }>("/api/meals/weight", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  mealTemplates: () => request<{ templates: MealTemplate[] }>("/api/meals/templates"),
+  createMealTemplate: (body: { name: string; meal: MealName; items: { food_id: number; quantity: number }[] }) =>
+    request<{ template: { id: number; name: string; meal: MealName } }>("/api/meals/templates", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  logMealTemplate: (id: number, body: { meal?: MealName; logged_on?: string } = {}) =>
+    request<{ logged: number }>(`/api/meals/templates/${id}/log`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteMealTemplate: (id: number) =>
+    request<{ ok: true }>(`/api/meals/templates/${id}`, { method: "DELETE" }),
+
+  /* ---- Foods ---- */
+
+  searchFoods: (params: { q?: string; category?: string; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (params.q) p.set("q", params.q);
+    if (params.category) p.set("category", params.category);
+    if (params.limit) p.set("limit", String(params.limit));
+    const qs = p.toString();
+    return request<{ foods: Food[] }>(`/api/foods${qs ? `?${qs}` : ""}`);
+  },
+  foodSuggestions: () => request<{ recent: Food[]; frequent: Food[] }>("/api/foods/suggestions"),
+  foodCategories: () => request<{ categories: { category: string; n: number }[] }>("/api/foods/categories"),
+  createFood: (body: Partial<Food> & { name: string; kcal: number }) =>
+    request<{ food: Food }>("/api/foods", { method: "POST", body: JSON.stringify(body) }),
+  updateFood: (id: number, body: Partial<Food>) =>
+    request<{ food: Food; copied: boolean }>(`/api/foods/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteFood: (id: number) => request<{ ok: true }>(`/api/foods/${id}`, { method: "DELETE" }),
 };
+
+export type MealName = "breakfast" | "lunch" | "dinner" | "snack";
+
+/** The four sections of a day, in the order every screen renders them. */
+export const MEAL_NAMES: MealName[] = ["breakfast", "lunch", "dinner", "snack"];
+
+export const MEAL_LABELS: Record<MealName, string> = {
+  breakfast: "Breakfast",
+  lunch: "Lunch",
+  dinner: "Dinner",
+  snack: "Snacks",
+};
+
+export interface Macros {
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fibre?: number;
+}
+
+export interface Food {
+  id: number;
+  name: string;
+  category: string;
+  serving_label: string;
+  serving_grams: number | null;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fibre: number;
+  custom: boolean;
+}
+
+export interface MealEntry {
+  id: number;
+  meal: MealName;
+  food_id: number | null;
+  name: string;
+  serving_label: string;
+  quantity: number;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fibre: number;
+}
+
+export interface MealDay {
+  date: string;
+  meals: { meal: MealName; entries: MealEntry[]; totals: Macros }[];
+  totals: Macros;
+  targets: Macros;
+  /** Negative means over target. Deliberately not clamped. */
+  remaining: Macros;
+  logged: number;
+}
+
+export interface MealTrends {
+  days: number;
+  series: { day: string; kcal: number; protein: number; carbs: number; fat: number; logged: boolean }[];
+  average: { kcal: number; protein: number };
+  logged_days: number;
+  streak: number;
+  target: { kcal: number; protein: number };
+  on_target_days: number;
+}
+
+export interface NutritionProfile {
+  sex: "male" | "female";
+  age: number;
+  height_cm: number;
+  weight_kg: number;
+  activity: "sedentary" | "light" | "moderate" | "active" | "very_active";
+  goal: "lose" | "maintain" | "gain";
+}
+
+export interface MealTargetsResponse {
+  targets: Macros;
+  configured: boolean;
+  profile: NutritionProfile | null;
+}
+
+export interface WeightLog {
+  readings: { id: number; day: string; kg: number }[];
+  latest: { day: string; kg: number } | null;
+  change_kg: number | null;
+}
+
+export interface MealTemplate {
+  id: number;
+  name: string;
+  meal: MealName;
+  items: { food_id: number; name: string; serving_label: string; quantity: number }[];
+  totals: Macros;
+}
 
 export type ApiKeyScope = "read" | "write";
 

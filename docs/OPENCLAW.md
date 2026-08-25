@@ -107,9 +107,14 @@ call — the scope filtering in `tools/list` is the first layer, not the only on
 
 ### The tool set
 
-Around thirty tools, not one per endpoint. An agent loads every description into
+Thirty-three tools, not one per endpoint. An agent loads every description into
 context before it can use any of them, so the list is the verbs people actually
 ask for: `myx_dashboard`, `myx_search`, and per-module list/add/update.
+
+Meals is the one worth calling out, because it is the case MCP suits best:
+`myx_food_search` then `myx_meal_log` turns "I had two dosas and a coffee" into
+a real entry with real numbers, from whatever channel the assistant listens on.
+Portions are servings, not grams — three idlis is quantity 3 of Idli.
 
 **Nothing deletes.** MyX has no undo for most modules, and an agent that misreads
 "clear my list" should not be able to take a year of transactions with it.

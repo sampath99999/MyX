@@ -13,6 +13,7 @@ import {
   Wallet,
   Sun,
   Check,
+  UtensilsCrossed,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -97,6 +98,8 @@ interface Summary {
   };
   recent: RecentTransaction[];
   checklist: DashboardChecklist | null;
+  /** Today's food. target is null until Meals has been set up. */
+  meals: { kcal: number; protein: number; target: number | null };
 }
 
 /** Local calendar date — "today" must be the user's, not UTC's. */
@@ -515,6 +518,53 @@ export default function Dashboard() {
               )}
             </Section>
           </div>
+
+          {/* ---------- Today's food ----------
+              A strip rather than a card in the grid: it is one number and a
+              bar, and the value of it is being glanceable on the way past. It
+              appears only once Meals has a target set, because a ring against a
+              number nobody chose measures nothing — before that it is an offer
+              to set the module up. */}
+          {summary?.meals?.target ? (
+            <Link
+              to="/meals"
+              className="flex items-center gap-4 rounded-2xl border border-border/60 p-4 transition-colors hover:bg-accent/50"
+            >
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background">
+                <UtensilsCrossed className="size-4 text-muted-foreground" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm font-medium">Today&rsquo;s food</p>
+                  <p className="tnum text-sm">
+                    <span className="font-semibold">
+                      {summary.meals.kcal.toLocaleString("en-IN")}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      / {summary.meals.target.toLocaleString("en-IN")} kcal
+                    </span>
+                  </p>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted/40">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      summary.meals.kcal > summary.meals.target ? "bg-destructive" : "bg-primary",
+                    )}
+                    style={{
+                      width: `${Math.min(100, (summary.meals.kcal / summary.meals.target) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {summary.meals.kcal === 0
+                    ? "Nothing logged yet today"
+                    : `${Math.round(summary.meals.protein)}g protein so far`}
+                </p>
+              </div>
+            </Link>
+          ) : null}
 
           {/* ---------- What just happened, and the checklist ---------- */}
           <div className="grid items-start gap-4 lg:grid-cols-3">

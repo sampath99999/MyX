@@ -491,6 +491,96 @@ export const TOOLS: McpTool[] = [
     path: () => "/api/memories",
     body: (a) => present(a, ["title", "note", "emoji", "occurred_on", "tags"]),
   },
+  /* ---- meals ---- */
+  {
+    name: "myx_meals_today",
+    description:
+      "What the user has eaten on a given day: every entry grouped into breakfast, lunch, dinner and snacks, the day's calorie and macro totals, their targets, and what is left. Remaining calories can be negative, which means they are over — report that honestly rather than rounding it up to zero.",
+    inputSchema: {
+      type: "object",
+      properties: { date: str(`Which day. ${DATE} Defaults to today.`) },
+    },
+    method: "GET",
+    path: (a) => withQuery("/api/meals/day", { date: a.date }),
+  },
+  {
+    name: "myx_food_search",
+    description:
+      "Search the food library for something to log. Returns each food's id, its serving ('1 idli', '1 katori'), and the calories and macros for one of those servings. Call this before myx_meal_log so the entry carries real numbers instead of a guess.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: str("What to look for, e.g. 'dosa', 'dal', 'coffee'."),
+        limit: int("How many to return. Default 50."),
+      },
+      required: ["query"],
+    },
+    method: "GET",
+    path: (a) => withQuery("/api/foods", { q: a.query, limit: a.limit }),
+  },
+  {
+    name: "myx_meal_log",
+    description:
+      "Log something eaten. Prefer food_id from myx_food_search, with quantity as a number of that food's servings — three idlis is food_id for Idli with quantity 3, not quantity 1 of something called 'three idlis'. For anything the library does not have (a restaurant dish, say), give a name and kcal instead and the entry stands alone without adding to the library. Guess a portion rather than refusing, and say what you assumed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        food_id: int("From myx_food_search. Leave out for a one-off."),
+        quantity: money("How many servings. 3 idlis = 3. Defaults to 1."),
+        meal: oneOf(["breakfast", "lunch", "dinner", "snack"], "Which meal. Defaults to snack."),
+        name: str("Name, for a one-off with no food_id."),
+        kcal: int("Calories for one serving, for a one-off."),
+        protein: money("Protein in grams, for a one-off."),
+        carbs: money("Carbohydrate in grams, for a one-off."),
+        fat: money("Fat in grams, for a one-off."),
+        logged_on: str(`When it was eaten. ${DATE} Defaults to today.`),
+      },
+    },
+    write: true,
+    method: "POST",
+    path: () => "/api/meals/entries",
+    body: (a) =>
+      present(a, [
+        "food_id",
+        "quantity",
+        "meal",
+        "name",
+        "kcal",
+        "protein",
+        "carbs",
+        "fat",
+        "logged_on",
+      ]),
+  },
+  {
+    name: "myx_nutrition_trends",
+    description:
+      "Calories and macros per day over a window, plus the average across days actually logged, the logging streak, and how many days came in under target. For questions about how the last week or month has gone rather than about one day.",
+    inputSchema: {
+      type: "object",
+      properties: { days: int("How many days back. 7 to 180, default 30.") },
+    },
+    method: "GET",
+    path: (a) => withQuery("/api/meals/trends", { days: a.days }),
+  },
+  {
+    name: "myx_weight_log",
+    description:
+      "Record a weight reading in kilograms. One reading per day — logging again for the same date replaces it rather than adding a second.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kg: money("Weight in kilograms."),
+        logged_on: str(`Which day. ${DATE} Defaults to today.`),
+      },
+      required: ["kg"],
+    },
+    write: true,
+    method: "POST",
+    path: () => "/api/meals/weight",
+    body: (a) => present(a, ["kg", "logged_on"]),
+  },
+
   {
     name: "myx_checklists_list",
     description:

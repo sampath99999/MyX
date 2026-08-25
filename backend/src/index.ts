@@ -17,6 +17,8 @@ import folderRoutes from "./routes/folders";
 import noteRoutes from "./routes/notes";
 import checklistRoutes from "./routes/checklists";
 import memoryRoutes from "./routes/memories";
+import foodRoutes from "./routes/foods";
+import mealRoutes from "./routes/meals";
 import adminRoutes from "./routes/admin";
 import apiKeyRoutes from "./routes/apikeys";
 import { createMcpRoutes } from "./routes/mcp";
@@ -72,6 +74,8 @@ app.route("/api/folders", folderRoutes);
 app.route("/api/notes", noteRoutes);
 app.route("/api/checklists", checklistRoutes);
 app.route("/api/memories", memoryRoutes);
+app.route("/api/foods", foodRoutes);
+app.route("/api/meals", mealRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/search", searchRoutes);
 app.route("/api/notifications", notificationRoutes);
@@ -136,6 +140,20 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
     One round trip for all of them — three COUNTs over indexed user_id columns
     is cheaper than three separate D1 calls from the edge.
   */
+  /*
+    The caller's today, not the server's.
+
+    date('now') is UTC, and the app's day is IST — so between midnight and
+    05:30 every morning a UTC "today" is still yesterday. Tasks can live with
+    that; a food total cannot, because those are exactly the hours when someone
+    checks what they ate and gets handed the previous day's number. The tasks
+    routes already take a ?today= for the same reason.
+  */
+  const clientToday = c.req.query("today");
+  const todayForUser = /^\d{4}-\d{2}-\d{2}$/.test(clientToday ?? "")
+    ? (clientToday as string)
+    : new Date().toISOString().slice(0, 10);
+
   const counts = await c.env.DB.prepare(
     `SELECT
        (SELECT COUNT(*) FROM tasks      WHERE user_id = ?1 AND status = 'open') AS open_tasks,
@@ -143,15 +161,23 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
        (SELECT COUNT(*) FROM checklists WHERE user_id = ?1)                     AS checklists,
        (SELECT COUNT(*) FROM memories   WHERE user_id = ?1)                     AS memories,
        (SELECT COUNT(*) FROM tasks      WHERE user_id = ?1 AND status = 'open'
-          AND due_date IS NOT NULL AND due_date < date('now'))                  AS overdue_tasks`,
+          AND due_date IS NOT NULL AND due_date < date('now'))                  AS overdue_tasks,
+       (SELECT COALESCE(SUM(kcal), 0) FROM meal_entries
+          WHERE user_id = ?1 AND logged_on = ?2)                                AS today_kcal,
+       (SELECT COALESCE(SUM(protein_cg), 0) FROM meal_entries
+          WHERE user_id = ?1 AND logged_on = ?2)                                AS today_protein_cg,
+       (SELECT kcal FROM nutrition_targets WHERE user_id = ?1)                  AS kcal_target`,
   )
-    .bind(user.sub)
+    .bind(user.sub, todayForUser)
     .first<{
       open_tasks: number;
       notes: number;
       checklists: number;
       memories: number;
       overdue_tasks: number;
+      today_kcal: number;
+      today_protein_cg: number;
+      kcal_target: number | null;
     }>();
 
   /*
@@ -268,6 +294,13 @@ app.get("/api/dashboard/summary", requireAuth, async (c) => {
       notes: counts?.notes ?? 0,
       checklists: counts?.checklists ?? 0,
       memories: counts?.memories ?? 0,
+    },
+    // Null target means Meals has never been set up; the card uses that to
+    // offer the module rather than showing a ring against a number nobody chose.
+    meals: {
+      kcal: counts?.today_kcal ?? 0,
+      protein: Math.round(counts?.today_protein_cg ?? 0) / 100,
+      target: counts?.kcal_target ?? null,
     },
     spark,
     today: {

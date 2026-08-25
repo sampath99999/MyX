@@ -57,6 +57,10 @@ const NoteEditor = lazyWithRetry(() => import("@/pages/notes/NoteEditor"));
 const ChecklistsList = lazyWithRetry(() => import("@/pages/checklists/ChecklistsList"));
 const ChecklistDetail = lazyWithRetry(() => import("@/pages/checklists/ChecklistDetail"));
 const MemoriesList = lazyWithRetry(() => import("@/pages/memories/MemoriesList"));
+const MealsLayout = lazyWithRetry(() => import("@/pages/meals/MealsLayout"));
+const MealsToday = lazyWithRetry(() => import("@/pages/meals/MealsToday"));
+const MealsTrends = lazyWithRetry(() => import("@/pages/meals/MealsTrends"));
+const FoodLibrary = lazyWithRetry(() => import("@/pages/meals/FoodLibrary"));
 
 function FullScreenLoader() {
   return (
@@ -199,6 +203,11 @@ export function AppRoutes() {
           <Route path="/checklists" element={<ChecklistsList />} />
           <Route path="/checklists/:id" element={<ChecklistDetail />} />
           <Route path="/memories" element={<MemoriesList />} />
+          <Route path="/meals" element={<MealsLayout />}>
+            <Route index element={<MealsToday />} />
+            <Route path="trends" element={<MealsTrends />} />
+            <Route path="foods" element={<FoodLibrary />} />
+          </Route>
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<NotFound />} />
