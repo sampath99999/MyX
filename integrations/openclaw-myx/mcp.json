@@ -1,0 +1,15 @@
+{
+  "mcp": {
+    "servers": {
+      "myx": {
+        "url": "https://api-myx.samchitech.com/api/mcp",
+        "transport": "streamable-http",
+        "headers": {
+          "Authorization": "Bearer ${MYX_API_KEY}"
+        },
+        "requestTimeoutMs": 20000,
+        "connectionTimeoutMs": 5000
+      }
+    }
+  }
+}

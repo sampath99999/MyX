@@ -1,4 +1,5 @@
 import type { JwtPayload } from "./lib/auth";
+import type { ApiKeyScope } from "./lib/apikeys";
 
 /** Cloudflare's rate-limiting binding (see wrangler.jsonc). */
 export interface RateLimiter {
@@ -52,9 +53,25 @@ export interface Env {
   REQUIRE_VERIFIED_EMAIL?: string;
 }
 
+/**
+ * Which credential got this request through requireAuth.
+ *
+ * Handlers deliberately do not need this — a key and a session produce the same
+ * `user`, which is what let every existing route accept keys unchanged. It
+ * exists for the one place that must know: routes/mcp.ts, which decides from the
+ * scope whether to offer the write tools at all.
+ */
+export interface AuthContext {
+  via: "jwt" | "api_key";
+  scope: ApiKeyScope;
+  /** api_keys.id, when the credential was a key. */
+  keyId?: number;
+}
+
 // Variables set on the Hono context by middleware.
 export interface Variables {
   user: JwtPayload;
+  auth: AuthContext;
 }
 
 export type AppBindings = { Bindings: Env; Variables: Variables };

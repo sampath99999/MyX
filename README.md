@@ -64,6 +64,9 @@ Single-user (you) today, built so family accounts can be added later.
 >   [docs/TASKS_PLAN.md](docs/TASKS_PLAN.md).
 > - ✅ **Notes** — notebooks (folders) + tags + pinning + Trash; markdown editor
 >   with live preview and autosave; full-text search; masonry note cards.
+> - ✅ **Connections (MCP)** — MyX is an MCP server, so OpenClaw or any other
+>   assistant can read and write the account with an API key minted in Settings.
+>   See [docs/OPENCLAW.md](docs/OPENCLAW.md).
 >
 > The Money section uses tabs (Dashboard · Transactions · Recurring · Budgets · Loans ·
 > Goals · Investments). Tasks uses Spaces (top-level contexts) → Projects → Tasks. One
@@ -90,6 +93,7 @@ Cloudflare D1     ──►  SQLite database  (myx-db)
 | Backend   | Hono, TypeScript                                 | **Workers**        |
 | Database  | SQLite via Drizzle-free raw SQL                  | **D1** (`myx-db`)  |
 | Auth      | Own `users` table, JWT (HS256), PBKDF2 hashing   | —                  |
+| Agents    | MCP server on the same Worker, API-key auth      | **Workers**        |
 
 **Why this stack:** all free tier, one API shared by web + future native app, fast global edge.
 
@@ -281,6 +285,26 @@ Once a real code has arrived in an inbox, make verification mandatory by adding
 before then — anyone who signed up while codes were going nowhere would be
 locked out.
 
+### Connecting an AI assistant (MCP)
+
+MyX answers MCP at `POST /api/mcp`, so OpenClaw, Claude or anything else that
+speaks the protocol can use the account. Mint a key under **Settings →
+Connections**, then:
+
+```bash
+openclaw mcp set myx '{"url":"https://api-myx.samchitech.com/api/mcp","transport":"streamable-http","headers":{"Authorization":"Bearer myx_..."}}'
+```
+
+An OpenClaw plugin bundle lives in [`integrations/openclaw-myx`](integrations/openclaw-myx)
+— it ships the server entry plus a skill teaching the assistant the conventions
+(rupees not paise, `YYYY-MM-DD`, tasks belong to spaces).
+
+Keys are stored as a SHA-256 and shown once. They reach the account's *contents*
+and nothing else: `/api/auth/*`, `/api/admin/*` and `/api/keys` are barred to
+them, so a leaked key cannot change the password, sign you out, delete the
+account or mint more keys. Scope is `read` or `write`, and no MCP tool deletes
+anything. Full design in [docs/OPENCLAW.md](docs/OPENCLAW.md).
+
 ### PWA
 
 `frontend/public/` holds `manifest.webmanifest`, the icon set and `sw.js`. The service worker
@@ -291,7 +315,7 @@ traffic is private and authenticated, so it must not land in a browser cache.
 ## 7. Live URLs (deployed 🎉)
 
 - **App:** https://myx-app.pages.dev
-- **API:** https://myx-api.samchitech.workers.dev
+- **API:** https://api-myx.samchitech.com
 
 ### Redeploy after changes
 ```bash
@@ -315,7 +339,7 @@ npm run deploy
 | Resource | Name      | Detail                                       |
 |----------|-----------|----------------------------------------------|
 | D1       | `myx-db`  | `ab5a4c50-4c48-41b6-ae3e-02ce46b63b82`       |
-| Worker   | `myx-api` | https://myx-api.samchitech.workers.dev       |
+| Worker   | `myx-api` | https://api-myx.samchitech.com       |
 | Pages    | `myx-app` | https://myx-app.pages.dev (prod branch `main`) |
 
 ## 9. Roadmap
@@ -339,6 +363,8 @@ Money module (building out one sub-feature at a time):
 - Habits, Calendar/events, Reminders, Goals *(cross-module)*, Projects *(cross-module)*
 - Health & Body module (Fitness, Meals, Water, Medicines, Sleep)
 - Life Admin module (Documents vault, Passwords, Shopping lists, Travel planner, Vehicle)
+- Per-module API key scopes (today a key is read-only or read-and-write across
+  everything; a Tasks-only key would need finer scopes)
 - Cross-module dashboard (today Dashboard only shows real Money numbers; other modules
   are placeholders — see `/api/dashboard/summary` in [backend/src/index.ts](backend/src/index.ts))
 - Reminders / notifications

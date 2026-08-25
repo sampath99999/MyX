@@ -1,5 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import type { MiddlewareHandler } from "hono";
+import { displayPrefix, looksLikeApiKey } from "./apikeys";
 import type { AppBindings } from "../types";
 
 /*
@@ -35,17 +36,28 @@ export const apiRateLimit: MiddlewareHandler<AppBindings> = async (c, next) => {
   // not take the whole API down, and auth stays protected by the D1 limiter.
   if (!limiter?.limit) return next();
 
-  // The JWT is verified later by requireAuth; this only needs a stable key, so
-  // reading the subject without verifying is fine — a forged token still just
-  // buys the attacker their own bucket.
+  // The credential is verified later by requireAuth; this only needs a stable
+  // key, so reading it without verifying is fine — a forged one still just buys
+  // the attacker their own bucket.
   const auth = c.req.header("Authorization");
   let key = `ip:${clientIp(c.req.raw.headers)}`;
   if (auth?.startsWith("Bearer ")) {
-    try {
-      const payload = JSON.parse(atob(auth.slice(7).split(".")[1] ?? ""));
-      if (payload?.sub) key = `user:${payload.sub}`;
-    } catch {
-      // Malformed token — fall back to the IP bucket.
+    const token = auth.slice(7).trim();
+    if (looksLikeApiKey(token)) {
+      /*
+        Per key, not per user. An agent hammering the API on its own key must
+        not be able to throttle the owner out of their own browser — and the
+        display prefix is the right handle for it, being both stable and already
+        treated as public (it is stored in plaintext and shown in Settings).
+      */
+      key = `key:${displayPrefix(token)}`;
+    } else {
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1] ?? ""));
+        if (payload?.sub) key = `user:${payload.sub}`;
+      } catch {
+        // Malformed token — fall back to the IP bucket.
+      }
     }
   }
 

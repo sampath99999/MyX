@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import Switch from "@/components/ui/switch";
 import { api, ApiError, clearToken, downloadExport } from "@/lib/api";
 import { useTheme, THEME_OPTIONS } from "@/lib/theme";
+import Connections from "@/components/Connections";
 
 /*
   Account settings: appearance, the digest, taking your data out, and deletion.
@@ -156,6 +157,8 @@ export default function Settings() {
             </p>
           )}
         </section>
+
+        <Connections />
 
         <section className="rounded-2xl border border-border/60 p-6">
           <div className="flex items-center gap-2">

@@ -881,7 +881,41 @@ export const api = {
     }>,
   ) => request<{ note: Note }>(`/api/notes/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteNote: (id: number) => request<{ ok: true }>(`/api/notes/${id}`, { method: "DELETE" }),
+
+  /* ---- API keys (Connections) ---- */
+
+  listApiKeys: () => request<{ keys: ApiKey[]; max: number }>("/api/keys"),
+
+  /**
+   * Mints a key. The `token` in the response is the only time the plaintext
+   * exists on this side — the server keeps a hash of it and nothing more, so it
+   * cannot be shown again and the UI has to say so loudly.
+   */
+  createApiKey: (body: { name: string; scope: ApiKeyScope; expires_in_days?: number }) =>
+    request<{ key: ApiKey; token: string }>("/api/keys", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  revokeApiKey: (id: number) => request<{ ok: true }>(`/api/keys/${id}`, { method: "DELETE" }),
 };
+
+export type ApiKeyScope = "read" | "write";
+
+export interface ApiKey {
+  id: number;
+  name: string;
+  /** The first 12 characters, so two keys are tellable apart in the list. */
+  prefix: string;
+  scope: ApiKeyScope;
+  /** Unix seconds, unlike most of the app's dates — these are token timestamps. */
+  created_at: number;
+  last_used_at: number | null;
+  expires_at: number | null;
+}
+
+/** Where an MCP client should point. Same origin as every other call. */
+export const MCP_URL = `${API_URL}/api/mcp`;
 
 export interface Folder {
   id: number;

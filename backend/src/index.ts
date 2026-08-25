@@ -18,6 +18,8 @@ import noteRoutes from "./routes/notes";
 import checklistRoutes from "./routes/checklists";
 import memoryRoutes from "./routes/memories";
 import adminRoutes from "./routes/admin";
+import apiKeyRoutes from "./routes/apikeys";
+import { createMcpRoutes } from "./routes/mcp";
 import searchRoutes from "./routes/search";
 import notificationRoutes from "./routes/notifications";
 import { requireAuth } from "./middleware";
@@ -36,7 +38,10 @@ app.use(
   cors({
     origin: (origin, c) => (isAllowedOrigin(origin, c.env.ALLOWED_ORIGINS) ? origin : null),
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
+    // MCP clients running in a browser send the protocol header on every call
+    // after initialize; without it here the preflight fails and they cannot
+    // connect at all. Non-browser clients (OpenClaw among them) never preflight.
+    allowHeaders: ["Content-Type", "Authorization", "MCP-Protocol-Version"],
     // The export is a download, and its filename lives in this header. Without
     // exposing it the browser hides it from the fetch that asked for it.
     exposeHeaders: ["Content-Disposition"],
@@ -70,6 +75,23 @@ app.route("/api/memories", memoryRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/search", searchRoutes);
 app.route("/api/notifications", notificationRoutes);
+app.route("/api/keys", apiKeyRoutes);
+
+/*
+  MyX as an MCP server, for OpenClaw and anything else that speaks the protocol.
+
+  Mounted with a dispatcher that re-enters this same app, because that is how a
+  tool call runs the real route rather than a copy of it (see lib/mcptools.ts).
+  Passing `app` to a route `app` is defining is safe: the reference is only
+  called at request time, long after the wiring below finishes.
+
+  Under /api deliberately, so MCP traffic inherits the same CORS policy and the
+  same flood protection as everything else.
+*/
+app.route(
+  "/api/mcp",
+  createMcpRoutes((request, env, ctx) => app.fetch(request, env, ctx)),
+);
 
 // Dashboard rollup across every module.
 app.get("/api/dashboard/summary", requireAuth, async (c) => {
