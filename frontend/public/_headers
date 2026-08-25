@@ -10,10 +10,20 @@
 # page.
 /*
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api-myx.samchitech.com https://myx-api.samchitech.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api-myx.samchitech.com https://myx-api.samchitech.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
   X-Content-Type-Options: nosniff
+
+# Cloudflare Web Analytics loads its beacon from static.cloudflareinsights.com.
+# Without this the browser blocked it on every single page load — Cloudflare
+# injected it, the CSP refused it, and the analytics quietly collected nothing
+# for months. Verified after allowing it: __cfBeacon is defined and a report
+# reaches /cdn-cgi/rum.
+#
+# Only the script host is granted. The beacon reports same-origin via
+# /cdn-cgi/rum, so connect-src needs nothing added, and script-src is otherwise
+# still 'self' — an injected <script> tag will not run.
 
 # connect-src lists both API hostnames. api-myx.samchitech.com is the one the
 # current build calls; the workers.dev name stays because it is still a live
