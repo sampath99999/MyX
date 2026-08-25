@@ -44,12 +44,39 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+/*
+  Is this the SPA fallback wearing an asset's URL?
+
+  Cloudflare Pages answers an unknown path with index.html and a 200, so a
+  hashed asset that has not propagated yet — the ordinary state of things for a
+  second or two during a deploy — comes back as HTML that looks perfectly
+  cacheable. Storing it pins the app to a broken boot: cache-first then serves
+  HTML where a module belongs, the entry graph fails, the app never runs, its
+  registration code never runs, this worker never updates, and nothing clears
+  the entry. A reload does not help.
+
+  _redirects now makes /assets/* 404 properly, which stops it at the source.
+  This stays because it is the layer that can also *heal* a client already
+  holding a poisoned entry, and because the same trap applies to any future
+  path the catch-all covers.
+*/
+function isSpaFallback(request, response) {
+  if (request.destination === "document" || request.mode === "navigate") return false;
+  const type = response.headers.get("content-type") || "";
+  return type.includes("text/html");
+}
+
 /** Cache-first, used for immutable hashed assets and fonts. */
 async function cacheFirst(request) {
   const cached = await caches.match(request);
-  if (cached) return cached;
+  // A cached entry is checked as well as a fresh one, so a client that already
+  // stored the fallback repairs itself on the next load rather than staying
+  // broken until someone clears site data by hand.
+  if (cached && !isSpaFallback(request, cached)) return cached;
+  if (cached) await (await caches.open(CACHE)).delete(request);
+
   const response = await fetch(request);
-  if (response.ok || response.type === "opaque") {
+  if ((response.ok || response.type === "opaque") && !isSpaFallback(request, response)) {
     const cache = await caches.open(CACHE);
     await cache.put(request, response.clone());
   }

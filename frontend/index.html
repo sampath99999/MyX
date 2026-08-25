@@ -58,6 +58,10 @@
       origin as the page.
     -->
     <script src="/theme-init.js"></script>
+    <!-- Recovers a load where the app never mounts at all. Outside the bundle
+         on purpose: if the entry graph fails, no bundled code runs, including
+         anything that could fix it. See public/boot-guard.js. -->
+    <script src="/boot-guard.js" defer></script>
     <title>MyX — Your Life, Organized</title>
   </head>
   <body>

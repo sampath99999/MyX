@@ -1,1 +1,16 @@
+# Every path that is not a real file becomes the app, so deep links work.
+#
+# It is tempting to make /assets/* answer 404 instead, because a hashed file
+# that has not propagated yet — the ordinary state of things for a second or
+# two mid-deploy — currently comes back as index.html with a 200, and a browser
+# handed a page where it asked for a module refuses it.
+#
+# Do not. It was tried: Cloudflare Pages needs a real destination for a 404
+# status, and the moment a 404.html exists in the output Pages starts serving it
+# for every unmatched path, ahead of this rule. Deep links to /meals/trends and
+# the rest began 404ing, which is a worse failure than the one being fixed.
+#
+# The real defence lives in public/sw.js, which refuses to cache or serve that
+# fallback under an asset's URL, and in public/boot-guard.js, which recovers a
+# load where nothing mounted.
 /*    /index.html   200
