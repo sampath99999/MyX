@@ -709,7 +709,7 @@ export default function MoneyOverview() {
                 return (
                   <Link
                     key={t.id}
-                    to={`/money/transactions/${t.id}`}
+                    to={`/money/transactions?view_id=${t.id}`}
                     className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50"
                   >
                     <span

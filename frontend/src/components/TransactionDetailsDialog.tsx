@@ -15,11 +15,11 @@ import { api, ApiError, formatMoney, type Transaction } from "@/lib/api";
 /*
   One transaction, at its own address.
 
-  /money/transactions/:id is a real link now — a search result points at it, and
-  so can a bookmark or a message to yourself. That means this cannot rely on the
-  row already being on screen: the list holds the most recent hundred, and the
-  thing being linked to is frequently older than that. So it takes whatever the
-  page already has, and fetches by id when it does not have it.
+/money/transactions?view_id=N is a real link — a search result points at it,
+  and so can a bookmark or a message to yourself. That means this cannot rely on
+  the row already being on screen: the list holds the most recent hundred, and
+  the thing being linked to is frequently older than that. So it takes whatever
+  the page already has, and fetches by id when it does not have it.
 */
 
 function formatDate(iso: string) {

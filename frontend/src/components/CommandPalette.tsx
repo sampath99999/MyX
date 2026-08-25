@@ -35,7 +35,7 @@ const KINDS: Record<
 > = {
   // Opens the row itself, not just the list it lives in — finding a transaction
   // and then having to hunt for it again would defeat the search.
-  transaction: { label: "Transaction", icon: Wallet, to: (h) => `/money/transactions/${h.id}` },
+  transaction: { label: "Transaction", icon: Wallet, to: (h) => `/money/transactions?view_id=${h.id}` },
   task: { label: "Task", icon: CheckCircle2, to: () => "/tasks" },
   note: { label: "Note", icon: StickyNote, to: (h) => `/notes/${h.id}` },
   memory: { label: "Memory", icon: Brain, to: () => "/memories" },

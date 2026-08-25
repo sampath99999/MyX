@@ -341,8 +341,8 @@ export const api = {
   // ----- Money -----
 
   /**
-   * One transaction by id. Needed because /money/transactions/:id is linkable,
-   * and the list on that page only holds the most recent hundred.
+   * One transaction by id. Needed because ?view_id= is linkable, and the list
+   * on that page only holds the most recent hundred.
    */
   getTransaction: (id: number) =>
     request<{ transaction: Transaction }>(`/api/transactions/${id}`),

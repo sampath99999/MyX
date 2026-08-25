@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Plus, Receipt, Upload, ChevronDown, ArrowUpRight, ArrowDownLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,8 +26,8 @@ import { cn } from "@/lib/utils";
 
   It groups by day with a running total per day, leads with what the money was
   actually for rather than its category, and moves editing into the row's own
-  screen — which is a real address (/money/transactions/:id), so it works by
-  touch, by link and by back button.
+  screen — which is a real address (?view_id=N), so it works by touch, by link
+  and by back button.
 
   Filtering is done by the database, not over the rows already on screen. The
   page holds one slice of the history; filtering that slice would answer "last
@@ -66,14 +66,29 @@ export default function Transactions() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   /*
-    The details modal is driven by the URL, not by state: /money/transactions/:id
-    is the same screen with one row opened. That makes it linkable — from search,
-    from a bookmark — and makes the browser's back button close it, which is what
-    people expect from a modal that has an address.
+    The details modal is driven by the URL, not by state: ?view_id=N is the same
+    screen with one row opened. That keeps it linkable — from search, from a
+    bookmark — and lets the browser's back button close it, which is what people
+    expect from a modal that has an address.
+
+    A query parameter rather than a path segment, and the distinction matters
+    beyond taste. A modal laid over a screen is a *state* of that screen, not a
+    different screen, and the app treats a change of pathname as a change of
+    screen: AppLayout resets the scroller on one. While this was
+    /money/transactions/:id, opening a row scrolled the ledger back to the top,
+    and (via a `key` that has since gone) threw away the loaded pages and the
+    filters with it.
   */
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const openId = id != null && /^\d+$/.test(id) ? Number(id) : null;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawId = searchParams.get("view_id");
+  const openId = rawId && /^[0-9]+$/.test(rawId) ? Number(rawId) : null;
+
+  /** Close by dropping the parameter, leaving anything else in the URL alone. */
+  const closeDetails = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("view_id");
+    setSearchParams(next, { replace: true });
+  };
 
   const load = useCallback(async () => {
     const res = await api.listTransactions({ ...query, limit: PAGE_SIZE, offset: 0 });
@@ -150,7 +165,7 @@ export default function Transactions() {
                 live on the row's own screen now, one tap away.
               */}
               <Link
-                to={`/money/transactions/${t.id}`}
+                to={`/money/transactions?view_id=${t.id}`}
                 className="group flex items-center gap-3.5 px-4 py-3 transition-colors hover:bg-accent/50"
               >
                 <span
@@ -363,7 +378,7 @@ export default function Transactions() {
           // page is instant and only a deep link pays for a fetch.
           known={transactions.find((t) => t.id === openId)}
           onChanged={reload}
-          onClose={() => navigate("/money/transactions", { replace: true })}
+          onClose={closeDetails}
         />
       )}
     </PageShell>

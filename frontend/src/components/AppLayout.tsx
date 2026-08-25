@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { Settings, PanelLeftClose, PanelLeft, Plus, MailWarning } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -96,6 +96,12 @@ export default function AppLayout() {
     }
   });
   const { pathname } = useLocation();
+
+  /* See the <main> below. */
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [pathname]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {
@@ -258,11 +264,23 @@ export default function AppLayout() {
         )}
 
         {/*
-          `key` on the scroller resets scrollTop on navigation. Without it,
-          opening a note from halfway down the list left the note scrolled
-          halfway down too.
+          Scroll resets on navigation, but the scroller itself survives it.
+
+          This was `key={pathname}`, which did reset scrollTop — by destroying
+          the whole page subtree and building a new one. Every URL change was
+          therefore a remount, and the transaction details modal was a URL, so
+          opening it threw away the ledger's loaded pages and its filters,
+          refetched from offset 0 and jumped to the top; closing it did the same
+          again. Anything else that grew a URL-addressed modal would have
+          inherited the bug.
+
+          Resetting the scroll of a scroller that persists gets the same result
+          without touching component state. It stays keyed on the pathname
+          rather than the whole URL because a modal is a state of a screen, not
+          a screen — which is why the details modal now lives in the query
+          string. Keep it that way and this needs no special cases.
         */}
-        <main id="main" key={pathname} className="min-h-0 flex-1 overflow-y-auto">
+        <main ref={mainRef} id="main" className="min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
 

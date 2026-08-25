@@ -1,5 +1,5 @@
 import { Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import lazyWithRetry from "@/lib/lazyWithRetry";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -100,6 +100,12 @@ function PublicOnly({ children }: { children: React.ReactNode }) {
   re-renders from scratch, which is worse than not prerendering.
 */
 /** Title and canonical follow the route, not just the initial HTML. */
+/** /money/transactions/:id, the shape the details modal used to have. */
+function TransactionRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/money/transactions?view_id=${id}`} replace />;
+}
+
 function DocumentMeta() {
   const { pathname } = useLocation();
   useEffect(() => syncDocumentMeta(pathname), [pathname]);
@@ -166,8 +172,13 @@ export function AppRoutes() {
           <Route path="/money" element={<MoneyLayout />}>
             <Route index element={<MoneyOverview />} />
             <Route path="transactions" element={<Transactions />} />
-            {/* Same screen, one row opened — see pages/money/Transactions.tsx. */}
-            <Route path="transactions/:id" element={<Transactions />} />
+            {/*
+              The details modal used to be a path segment and is now ?view_id=
+              (see pages/money/Transactions.tsx). This keeps every link written
+              in the old shape working — search results people bookmarked, and
+              anything already shared.
+            */}
+            <Route path="transactions/:id" element={<TransactionRedirect />} />
             <Route path="recurring" element={<Recurring />} />
             <Route path="budgets" element={<Budgets />} />
             <Route path="loans" element={<Loans />} />
