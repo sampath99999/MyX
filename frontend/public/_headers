@@ -10,10 +10,18 @@
 # page.
 /*
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://myx-api.samchitech.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://api-myx.samchitech.com https://myx-api.samchitech.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
   X-Content-Type-Options: nosniff
+
+# connect-src lists both API hostnames. api-myx.samchitech.com is the one the
+# current build calls; the workers.dev name stays because it is still a live
+# route on the same Worker, and a bundle cached from before the switch still
+# points at it — pruning it would break those tabs on their next API call.
+#
+# The API is a separate origin from this one either way, so 'self' alone has
+# never been enough here.
 
 # The service worker must never be served from a CDN or browser cache — a stale
 # sw.js pins every installed device to the old app shell indefinitely.

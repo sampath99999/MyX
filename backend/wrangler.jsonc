@@ -11,6 +11,25 @@
   "observability": {
     "enabled": true
   },
+  /*
+    The API's own hostname. Declared here rather than left in the dashboard so a
+    fresh deploy from a clean checkout reproduces the whole setup.
+
+    Deliberately one level deep. api.myx.samchitech.com was tried first and had
+    no certificate: Cloudflare's Universal SSL covers samchitech.com and
+    *.samchitech.com, and a two-level name falls outside that wildcard, so the
+    edge answered every request with a TLS handshake failure. This name is
+    inside the wildcard and worked the moment it was added.
+
+    workers_dev is set explicitly and must stay that way. Declaring "routes"
+    flips its default to false, which silently took myx-api.samchitech.workers.dev
+    offline the moment this block was added — a 404 for every request from the
+    then-deployed frontend, which was still calling that hostname, and for any
+    MCP client already configured against it. The old address stays live so a
+    rename is never a breaking change for something already pointed at it.
+  */
+  "routes": [{ "pattern": "api-myx.samchitech.com", "custom_domain": true }],
+  "workers_dev": true,
   // Transactional email in production goes through Resend over HTTPS — its free
   // tier needs no paid plan, whereas Cloudflare Email Sending requires Workers
   // Paid ($5/mo). Set the key with `wrangler secret put RESEND_API_KEY`.
